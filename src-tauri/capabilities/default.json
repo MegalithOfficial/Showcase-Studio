@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "store:default",
+    "shell:default",
+    "opener:allow-reveal-item-in-dir",
+     {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        {
+          "path": "$APPDATA/com.megalith.showcase_app/presentations/*"
+        }
+      ]
+    }
+  ]
+}
