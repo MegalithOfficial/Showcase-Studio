@@ -112,7 +112,7 @@ const Sidebar: React.FC = () => {
                            className="flex items-center gap-2"
                         >
                            <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded-full">Beta</span>
-                           <span className="text-xs text-slate-500">v0.1.1</span>
+                           <span className="text-xs text-slate-500">v0.1.2</span>
                         </motion.div>
                      )}
                   </AnimatePresence>

@@ -18,6 +18,7 @@ import WelcomeModal from '../components/image-editor/components/WelcomeModal';
 import { captureScreenshot } from '../utils/screenshot';
 import { EditableImage, ShowcaseImage } from '../utils/types';
 import Logger from '../utils/log';
+import toast from 'react-hot-toast';
 
 const EditImages = () => {
    const navigate = useNavigate();
@@ -46,6 +47,24 @@ const EditImages = () => {
       }
    }, [editableImages, selectedImage]);
 
+   useEffect(() => {
+      if (editableImages.length > 0) {
+         invoke<ShowcaseImage[]>('get_showcase_images', { id: showcaseId })
+            .then(existingImages => {
+               if (existingImages && existingImages.length > 0) {
+                  const completedIds = existingImages
+                     .filter(img => img.is_edited)
+                     .map(img => img.message_id);
+
+                  setCompletedImages(prev => [...new Set([...prev, ...completedIds])]);
+               }
+            })
+            .catch(err => {
+               Logger.error("Failed to load existing showcase images:", err);
+            });
+      }
+   }, [editableImages, showcaseId]);
+
    const { handleResizeStart } = useOverlayResizer({ selectedImage, setSelectedImage });
 
    const handleCompleteEditing = useCallback(async () => {
@@ -65,10 +84,6 @@ const EditImages = () => {
 
    const handleImageSelect = useCallback((img: EditableImage, fromNavigation: boolean = false) => {
       if (img.id === selectedImage?.id) return;
-
-      if (!fromNavigation && completedImages.includes(img.id)) {
-         setCompletedImages(prev => prev.filter(id => id !== img.id));
-      }
       setSelectedImage(img);
    }, [selectedImage?.id, completedImages]);
 
@@ -93,10 +108,12 @@ const EditImages = () => {
          const dataUri = await captureScreenshot(previewContainerRef.current);
          if (!dataUri) throw new Error('Failed to capture screenshot');
 
+         console.log(selectedImage)
+
          const imageMetadata: ShowcaseImage = {
             message_id: selectedImage.message_id,
             sender: selectedImage.sender,
-            avatar: selectedImage.avatar as string,
+            avatar: selectedImage.avatar ?? "" as string,
             message: selectedImage.message,
             is_edited: true,
             overlay: {
@@ -131,6 +148,7 @@ const EditImages = () => {
          });
 
       } catch (err) {
+         toast.error(`Error: ${err}`);
          Logger.error("Failed to save changes:", err);
       } finally {
          setIsSaving(false);
@@ -160,8 +178,15 @@ const EditImages = () => {
             overlay: { ...prev.overlay, ...updates }
          };
       });
+
       if (selectedImage && completedImages.includes(selectedImage.id)) {
-         setCompletedImages(prev => prev.filter(id => id !== selectedImage.id));
+         const hasChanges = Object.entries(updates).some(([key, value]) => {
+            return selectedImage.overlay[key as keyof typeof selectedImage.overlay] !== value;
+         });
+
+         if (hasChanges) {
+            setCompletedImages(prev => prev.filter(id => id !== selectedImage.id));
+         }
       }
    }, [selectedImage, completedImages]);
 
@@ -170,8 +195,13 @@ const EditImages = () => {
          if (!prev) return null;
          return { ...prev, [field]: value };
       });
+
       if (selectedImage && completedImages.includes(selectedImage.id)) {
-         setCompletedImages(prev => prev.filter(id => id !== selectedImage.id));
+         const hasChanges = selectedImage[field] !== value;
+
+         if (hasChanges) {
+            setCompletedImages(prev => prev.filter(id => id !== selectedImage.id));
+         }
       }
    }, [selectedImage, completedImages]);
 

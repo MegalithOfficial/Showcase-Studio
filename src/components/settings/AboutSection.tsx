@@ -45,7 +45,7 @@ export const AboutSection: React.FC = () => {
                <div className="flex justify-between items-center py-2 border-b border-gray-700/40 group hover:bg-gray-800/30 px-2 rounded transition-colors">
                   <span className="text-slate-400">Version</span>
                   <div className="flex items-center gap-2">
-                     <span className="font-medium text-slate-100 bg-indigo-900/30 px-2 py-0.5 rounded text-xs border border-indigo-700/40">0.1.0 (Beta)</span>
+                     <span className="font-medium text-slate-100 bg-indigo-900/30 px-2 py-0.5 rounded text-xs border border-indigo-700/40">v0.1.2 (Beta)</span>
                      <button
                         onClick={() => handleCopy("0.1.0", "version")}
                         className="p-1 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-400 hover:text-indigo-300 rounded-full hover:bg-indigo-900/30"

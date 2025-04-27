@@ -17,7 +17,7 @@ use discord::{fetch_discord_guilds, get_discord_channels, start_initial_indexing
 use showcase_manager::{
     create_showcase, delete_showcase, get_selected_messages, get_showcase, list_showcases,
     open_showcase_pptx, save_selected_messages, save_showcase_pptx, sort_showcase_images,
-    update_showcase, update_showcase_phase, upload_showcase_image, check_showcase_pptx_exists,
+    update_showcase, update_showcase_phase, upload_showcase_image, check_showcase_pptx_exists, get_showcase_images,
 };
 use sqlite_manager::{
     get_cached_image_data, get_indexed_messages, get_storage_usage, retrieve_config, DbConnection,
@@ -285,6 +285,7 @@ pub fn run() {
             get_selected_messages,
             upload_showcase_image,
             sort_showcase_images,
+            get_showcase_images,
             get_storage_usage,
             save_showcase_pptx,
             open_showcase_pptx,

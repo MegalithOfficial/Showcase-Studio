@@ -340,6 +340,38 @@ pub async fn upload_showcase_image(
 }
 
 #[tauri::command]
+pub async fn get_showcase_images(
+    id: String,
+    db_state: State<'_, DbConnection>,
+) -> Result<Vec<ShowcaseImage>, String> {
+    println!("Getting showcase images for showcase ID: {}", id);
+    let conn_guard = db_state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+
+    let result = conn_guard.query_row(
+        "SELECT images_json FROM showcases WHERE id = ?1",
+        params![&id],
+        |row| row.get::<_, Option<String>>(0),
+    );
+
+    match result {
+        Ok(Some(json_data)) => {
+            if json_data.is_empty() || json_data == "null" {
+                Ok(Vec::new())
+            } else {
+                serde_json::from_str(&json_data)
+                    .map_err(|e| format!("Failed to parse showcase images JSON: {}", e))
+            }
+        }
+        Ok(None) => Ok(Vec::new()),
+        Err(RusqliteError::QueryReturnedNoRows) => Err(format!("Showcase ID '{}' not found.", id)),
+        Err(e) => Err(format!("DB error getting showcase images: {}", e)),
+    }
+}
+
+#[tauri::command]
 pub async fn sort_showcase_images(
     id: String,
     sorted_images: Vec<ShowcaseImage>,
@@ -564,7 +596,7 @@ fn get_showcase_presentation_dir(
 pub async fn save_showcase_pptx(
     app_handle: AppHandle,
     id: String,
-    title: String,
+    _title: String,
     pptx_base64: String,
     db_state: State<'_, DbConnection>,
 ) -> Result<String, String> {

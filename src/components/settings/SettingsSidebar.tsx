@@ -91,7 +91,7 @@ const SettingsSidebar: React.FC<{ settingsSections: SettingsSection[] }> = ({ se
 
             <div className="mt-3 px-3 flex items-center justify-between">
                <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded-full">Beta</span>
-               <span className="text-xs text-slate-500">v0.1.1</span>
+               <span className="text-xs text-slate-500">v0.1.2</span>
             </div>
          </div>
       </div>

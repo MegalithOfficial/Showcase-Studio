@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { SelectedMessage, EditableImage } from '../../../utils/types';
+import { SelectedMessage, EditableImage, ShowcaseImage } from '../../../utils/types';
 import { DEFAULT_OVERLAY } from '../constants';
 
 export function useShowcaseLoader(showcaseId: string | null) {
@@ -22,7 +22,13 @@ export function useShowcaseLoader(showcaseId: string | null) {
 
       const loadData = async () => {
          try {
-            const msgs: SelectedMessage[] = await invoke('get_selected_messages', { id: showcaseId });
+            // Load messages and existing edited images in parallel
+            const [msgs, existingImages] = await Promise.all([
+               invoke<SelectedMessage[]>('get_selected_messages', { id: showcaseId }),
+               invoke<ShowcaseImage[]>('get_showcase_images', { id: showcaseId })
+                  .catch(() => [] as ShowcaseImage[])
+            ]);
+
             if (!msgs || msgs.length === 0) {
                setError("No images selected for this showcase.");
                setImages([]);
@@ -34,6 +40,9 @@ export function useShowcaseLoader(showcaseId: string | null) {
             await Promise.all(msgs.map(async (m) => {
                try {
                   const dataUri: string = await invoke('get_cached_image_data', { messageId: m.message_id, relativePath: m.selected_attachment_filename });
+
+                  const existingImage = existingImages.find(img => img.message_id === m.message_id);
+
                   loadedImages.push({
                      id: m.message_id,
                      message_id: m.message_id,
@@ -42,7 +51,7 @@ export function useShowcaseLoader(showcaseId: string | null) {
                      avatar: m.author_avatar,
                      message: m.message_content,
                      imageDataUrl: dataUri,
-                     overlay: { ...DEFAULT_OVERLAY }
+                     overlay: existingImage ? existingImage.overlay : { ...DEFAULT_OVERLAY }
                   });
                } catch (imgErr) {
                   console.error(`Failed to load image data for message ${m.message_id}:`, imgErr);
