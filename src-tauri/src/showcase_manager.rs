@@ -301,7 +301,24 @@ pub async fn upload_showcase_image(
         .unwrap_or_else(|_| Vec::new());
 
     let mut updated_images: Vec<ShowcaseImage> = current_images;
-    updated_images.push(image_metadata);
+
+    let existing_index = updated_images
+        .iter()
+        .position(|img| img.message_id == image_metadata.message_id);
+
+    if let Some(index) = existing_index {
+        updated_images[index] = image_metadata.clone();
+        println!(
+            "Replaced existing image for message ID: {} in showcase ID: {}",
+            image_metadata.message_id, id
+        );
+    } else {
+        updated_images.push(image_metadata.clone());
+        println!(
+            "Added new image for message ID: {} to showcase ID: {}",
+            image_metadata.message_id, id
+        );
+    }
 
     let images_json = serde_json::to_string(&updated_images)
         .map_err(|e| format!("Failed to serialize images metadata: {}", e))?;
@@ -682,9 +699,9 @@ pub async fn check_showcase_pptx_exists(
     let pptx_path = presentation_dir.join(format!("{}/showcase_{}.pptx", id, id));
 
     println!("Checking if PPTX exists at: {}", pptx_path.display());
-    
+
     let exists = pptx_path.exists();
     println!("File exists: {}", exists);
-    
+
     Ok(exists)
 }
