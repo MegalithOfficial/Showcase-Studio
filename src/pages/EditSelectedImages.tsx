@@ -82,7 +82,7 @@ const EditImages = () => {
       }
    }, [showcaseId, navigate]);
 
-   const handleImageSelect = useCallback((img: EditableImage, fromNavigation: boolean = false) => {
+   const handleImageSelect = useCallback((img: EditableImage) => {
       if (img.id === selectedImage?.id) return;
       setSelectedImage(img);
    }, [selectedImage?.id, completedImages]);
@@ -91,14 +91,14 @@ const EditImages = () => {
       if (editableImages.length < 2) return;
       const currentIndex = editableImages.findIndex(img => img.id === selectedImage?.id);
       const nextIndex = (currentIndex + 1) % editableImages.length;
-      handleImageSelect(editableImages[nextIndex], true);
+      handleImageSelect(editableImages[nextIndex]);
    }, [editableImages, selectedImage?.id, handleImageSelect]);
 
    const handlePreviousImage = useCallback(() => {
       if (editableImages.length < 2) return;
       const currentIndex = editableImages.findIndex(img => img.id === selectedImage?.id);
       const prevIndex = currentIndex === 0 ? editableImages.length - 1 : currentIndex - 1;
-      handleImageSelect(editableImages[prevIndex], true);
+      handleImageSelect(editableImages[prevIndex]);
    }, [editableImages, selectedImage?.id, handleImageSelect]);
 
    const saveChanges = useCallback(async () => {
@@ -321,7 +321,7 @@ const EditImages = () => {
             <ImageCarousel
                images={editableImages}
                selectedImageId={selectedImage?.id}
-               onSelect={(img) => handleImageSelect(img, false)}
+               onSelect={(img) => handleImageSelect(img)}
                onNext={handleNextImage}
                onPrevious={handlePreviousImage}
                completedImages={completedImages}
