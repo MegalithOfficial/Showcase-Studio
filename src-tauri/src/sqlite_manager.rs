@@ -1,6 +1,8 @@
+use regex::Regex;
 use rusqlite::Connection as RusqliteConnection;
 use rusqlite::{Connection, Error as RusqliteError, Row};
 use serde_json;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -13,6 +15,12 @@ use base64::{engine::general_purpose::STANDARD as base64_engine, Engine as _};
 use mime_guess;
 
 const DB_FILENAME: &str = "showcase_app_data.db";
+const CURRENT_SCHEMA_VERSION: i32 = 1;
+
+const SQL_CREATE_SCHEMA_VERSION_TABLE: &str = "
+CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER PRIMARY KEY NOT NULL
+);";
 
 const SQL_CREATE_CONFIG_TABLE: &str = "
 CREATE TABLE IF NOT EXISTS config (
@@ -76,13 +84,193 @@ fn get_db_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+fn parse_create_table_statement(create_sql: &str) -> Result<(String, Vec<(String, String)>), String> {
+    let table_name_re = Regex::new(r"CREATE TABLE IF NOT EXISTS (\w+)").unwrap();
+    let table_name = match table_name_re.captures(create_sql) {
+        Some(caps) => caps.get(1).unwrap().as_str().to_string(),
+        None => return Err("Could not extract table name from CREATE TABLE statement".to_string()),
+    };
+    
+    let mut columns = Vec::new();
+    
+    let columns_re = Regex::new(r"\(\s*([\s\S]+?)\s*\);").unwrap();
+    let columns_text = match columns_re.captures(create_sql) {
+        Some(caps) => caps.get(1).unwrap().as_str(),
+        None => return Err("Could not extract column definitions from CREATE TABLE statement".to_string()),
+    };
+    
+    for line in columns_text.split(',') {
+        let line = line.trim();
+        if line.starts_with("PRIMARY KEY") || line.starts_with("FOREIGN KEY") || line.is_empty() {
+            continue;
+        }
+        
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 2 {
+            let column_name = parts[0].to_string();
+            let column_def = parts[1..].join(" ");
+            
+            columns.push((column_name, column_def));
+        }
+    }
+    
+    Ok((table_name, columns))
+}
+
+fn get_existing_tables(conn: &Connection) -> Result<Vec<String>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    ).map_err(|e| format!("Failed to prepare query for existing tables: {}", e))?;
+    
+    let tables = stmt.query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| format!("Failed to query existing tables: {}", e))?
+        .collect::<Result<Vec<String>, _>>()
+        .map_err(|e| format!("Error processing table names: {}", e))?;
+    
+    Ok(tables)
+}
+
+fn get_existing_columns(conn: &Connection, table_name: &str) -> Result<HashMap<String, String>, String> {
+    let mut stmt = conn.prepare(&format!(
+        "PRAGMA table_info({})", table_name
+    )).map_err(|e| format!("Failed to prepare query for columns of {}: {}", table_name, e))?;
+    
+    let columns = stmt.query_map([], |row| {
+        let name: String = row.get(1)?;
+        let type_name: String = row.get(2)?;
+        let notnull: bool = row.get(3)?;
+        let dflt_value: Option<String> = row.get(4)?;
+        let pk: bool = row.get(5)?;
+        
+        let mut def = type_name;
+        if pk {
+            def += " PRIMARY KEY";
+        }
+        if notnull {
+            def += " NOT NULL";
+        }
+        if let Some(default) = dflt_value {
+            def += &format!(" DEFAULT {}", default);
+        }
+        
+        Ok((name, def))
+    })
+    .map_err(|e| format!("Failed to query columns for {}: {}", table_name, e))?
+    .collect::<Result<HashMap<String, String>, _>>()
+    .map_err(|e| format!("Error processing column info: {}", e))?;
+    
+    Ok(columns)
+}
+
+fn update_database_schema(conn: &mut Connection) -> Result<(), String> {
+    println!("Starting dynamic schema analysis and update...");
+    
+    let tx = conn.transaction()
+        .map_err(|e| format!("Failed to start schema update transaction: {}", e))?;
+
+    let table_definitions = vec![
+        SQL_CREATE_CONFIG_TABLE,
+        SQL_CREATE_SHOWCASES_TABLE, 
+        SQL_CREATE_MESSAGES_TABLE
+    ];
+    
+    let existing_tables = get_existing_tables(&tx)?;
+    println!("Existing tables: {:?}", existing_tables);
+    
+    for create_sql in table_definitions {
+        let (table_name, expected_columns) = parse_create_table_statement(create_sql)?;
+        
+        if !existing_tables.contains(&table_name) {
+            println!("Creating missing table: {}", table_name);
+            tx.execute(create_sql, [])
+                .map_err(|e| format!("Failed to create table {}: {}", table_name, e))?;
+        } else {
+            let existing_columns = get_existing_columns(&tx, &table_name)?;
+            
+            for (col_name, col_def) in &expected_columns {
+                if !existing_columns.contains_key(col_name) {
+                    println!("Adding missing column: {}.{}", table_name, col_name);
+
+                    let simple_def = if col_def.contains("PRIMARY KEY") {
+                        col_def.replace("PRIMARY KEY", "").trim().to_string()
+                    } else {
+                        col_def.clone()
+                    };
+                    
+                    let alter_sql = format!("ALTER TABLE {} ADD COLUMN {} {}", 
+                                           table_name, col_name, simple_def);
+                    
+                    tx.execute(&alter_sql, [])
+                        .map_err(|e| format!("Failed to add column {}.{}: {}", 
+                                            table_name, col_name, e))?;
+                }
+            }
+        }
+    }
+    
+    let index_definitions = vec![
+        SQL_CREATE_MESSAGES_CHANNEL_INDEX,
+        SQL_CREATE_MESSAGES_TIMESTAMP_INDEX,
+        SQL_CREATE_MESSAGES_AUTHOR_INDEX
+    ];
+    
+    for index_sql in index_definitions {
+        tx.execute(index_sql, [])
+            .map_err(|e| format!("Failed to create index: {}", e))?;
+    }
+    
+    set_schema_version(&tx, CURRENT_SCHEMA_VERSION)?;
+    
+    tx.commit()
+        .map_err(|e| format!("Failed to commit schema updates: {}", e))?;
+    
+    println!("Dynamic schema update completed successfully.");
+    Ok(())
+}
+
+fn get_schema_version(conn: &Connection) -> Result<i32, String> {
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_version')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to check if schema_version table exists: {}", e))?;
+    
+    if !table_exists {
+        return Ok(0);
+    }
+    
+    match conn.query_row("SELECT version FROM schema_version LIMIT 1", [], |row| {
+        row.get::<_, i32>(0)
+    }) {
+        Ok(version) => Ok(version),
+        Err(RusqliteError::QueryReturnedNoRows) => Ok(0),
+        Err(e) => Err(format!("Failed to get schema version: {}", e)),
+    }
+}
+
+// Sets the schema version in the database
+fn set_schema_version(conn: &Connection, version: i32) -> Result<(), String> {
+    conn.execute("DELETE FROM schema_version", [])
+        .map_err(|e| format!("Failed to clear schema_version table: {}", e))?;
+        
+    conn.execute("INSERT INTO schema_version (version) VALUES (?1)", [version])
+        .map_err(|e| format!("Failed to update schema version to {}: {}", version, e))?;
+        
+    Ok(())
+}
+
 pub fn initialize_database(app_handle: &AppHandle) -> Result<Connection, String> {
     let db_path = get_db_path(app_handle)?;
     println!("Database path: {}", db_path.display());
+    
+    let is_new_database = !db_path.exists();
+    println!("Database exists: {}", !is_new_database);
 
     let mut conn = Connection::open(&db_path)
         .map_err(|e| format!("Failed to open database connection: {}", e))?;
-
+    
     println!("Database connection opened successfully.");
 
     conn.query_row("PRAGMA journal_mode=WAL;", [], |_| Ok(()))
@@ -98,37 +286,69 @@ pub fn initialize_database(app_handle: &AppHandle) -> Result<Connection, String>
 
     println!("Applied PRAGMAs.");
 
-    let tx = conn
-        .transaction()
-        .map_err(|e| format!("Failed to start schema transaction: {}", e))?;
+    if is_new_database {
+        println!("Setting up new database...");
+        
+        conn.execute(SQL_CREATE_SCHEMA_VERSION_TABLE, [])
+            .map_err(|e| format!("Failed to create schema_version table: {}", e))?;
+        
+        let tx = conn.transaction()
+            .map_err(|e| format!("Failed to start schema transaction: {}", e))?;
 
-    println!("Starting schema creation transaction...");
+        println!("Starting schema creation transaction...");
 
-    tx.execute(SQL_CREATE_CONFIG_TABLE, [])
-        .map_err(|e| format!("Failed to create config table: {}", e))?;
-    println!("Checked/Created config table.");
+        tx.execute(SQL_CREATE_CONFIG_TABLE, [])
+            .map_err(|e| format!("Failed to create config table: {}", e))?;
+        println!("Created config table.");
 
-    tx.execute(SQL_CREATE_SHOWCASES_TABLE, [])
-        .map_err(|e| format!("Failed to create showcases table: {}", e))?;
-    println!("Checked/Created showcases table.");
+        tx.execute(SQL_CREATE_SHOWCASES_TABLE, [])
+            .map_err(|e| format!("Failed to create showcases table: {}", e))?;
+        println!("Created showcases table.");
 
-    tx.execute(SQL_CREATE_MESSAGES_TABLE, [])
-        .map_err(|e| format!("Failed to create messages table: {}", e))?;
-    println!("Checked/Created messages table.");
+        tx.execute(SQL_CREATE_MESSAGES_TABLE, [])
+            .map_err(|e| format!("Failed to create messages table: {}", e))?;
+        println!("Created messages table.");
 
-    tx.execute(SQL_CREATE_MESSAGES_CHANNEL_INDEX, [])
-        .map_err(|e| format!("Failed to create messages channel index: {}", e))?;
-    tx.execute(SQL_CREATE_MESSAGES_TIMESTAMP_INDEX, [])
-        .map_err(|e| format!("Failed to create messages timestamp index: {}", e))?;
-    tx.execute(SQL_CREATE_MESSAGES_AUTHOR_INDEX, [])
-        .map_err(|e| format!("Failed to create messages author index: {}", e))?;
-    println!("Checked/Created messages indexes.");
+        // Create indexes
+        tx.execute(SQL_CREATE_MESSAGES_CHANNEL_INDEX, [])
+            .map_err(|e| format!("Failed to create messages channel index: {}", e))?;
+        tx.execute(SQL_CREATE_MESSAGES_TIMESTAMP_INDEX, [])
+            .map_err(|e| format!("Failed to create messages timestamp index: {}", e))?;
+        tx.execute(SQL_CREATE_MESSAGES_AUTHOR_INDEX, [])
+            .map_err(|e| format!("Failed to create messages author index: {}", e))?;
+        println!("Created messages indexes.");
 
-    tx.commit()
-        .map_err(|e| format!("Failed to commit schema transaction: {}", e))?;
+        set_schema_version(&tx, CURRENT_SCHEMA_VERSION)?;
+
+        tx.commit()
+            .map_err(|e| format!("Failed to commit schema transaction: {}", e))?;
+        
+        println!("New database schema created with version {}", CURRENT_SCHEMA_VERSION);
+    } 
+    else {
+        println!("Existing database found, checking schema version...");
+        
+        conn.execute(SQL_CREATE_SCHEMA_VERSION_TABLE, [])
+            .map_err(|e| format!("Failed to create schema_version table: {}", e))?;
+        
+        let current_version = get_schema_version(&conn)?;
+        println!("Current database schema version: {}", current_version);
+        
+        if current_version < CURRENT_SCHEMA_VERSION {
+            println!("Database schema needs update from version {} to {}", 
+                     current_version, CURRENT_SCHEMA_VERSION);
+            update_database_schema(&mut conn)?;
+        } else if current_version > CURRENT_SCHEMA_VERSION {
+            return Err(format!(
+                "Database schema version {} is newer than application version {}. Please update the application.", 
+                current_version, CURRENT_SCHEMA_VERSION
+            ));
+        } else {
+            println!("Database schema is already at current version {}", CURRENT_SCHEMA_VERSION);
+        }
+    }
 
     println!("Database schema initialized successfully.");
-
     Ok(conn)
 }
 

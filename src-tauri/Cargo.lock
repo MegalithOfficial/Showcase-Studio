@@ -3866,6 +3866,7 @@ dependencies = [
  "chrono",
  "keyring",
  "mime_guess",
+ "regex",
  "reqwest 0.12.15",
  "rusqlite",
  "serde",

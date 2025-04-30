@@ -28,3 +28,4 @@ release
 update
 .env
 src-tauri/target
+src-tauri/Cargo.lock
