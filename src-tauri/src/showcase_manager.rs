@@ -19,6 +19,17 @@ fn get_showcase_image_dir(app_handle: &AppHandle, showcase_id: &str) -> Result<P
     Ok(app_data_dir.join("images").join(showcase_id))
 }
 
+fn get_showcase_presentation_dir(
+    app_handle: &AppHandle,
+    showcase_id: &str,
+) -> Result<PathBuf, String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    Ok(app_data_dir.join("presentations").join(showcase_id))
+}
+
 fn decode_base64_image(data_uri: &str) -> Result<(Vec<u8>, String), String> {
     let prefix = data_uri
         .splitn(2, ',')
@@ -494,6 +505,30 @@ pub async fn delete_showcase(
         );
     }
 
+    let presentation_dir = get_showcase_presentation_dir(&app_handle, &id)?;
+    if presentation_dir.exists() {
+        println!(
+            "Deleting presentation directory: {}",
+            presentation_dir.display()
+        );
+        let presentation_dir_for_task = presentation_dir.clone();
+        tokio::task::spawn_blocking(move || fs::remove_dir_all(&presentation_dir_for_task))
+            .await
+            .map_err(|e| format!("Presentation directory deletion task failed: {}", e))?
+            .map_err(|e: std::io::Error| {
+                format!(
+                    "Failed to delete presentation directory '{}': {}",
+                    presentation_dir.display(),
+                    e
+                )
+            })?;
+    } else {
+        println!(
+            "Presentation directory not found, skipping deletion: {}",
+            presentation_dir.display()
+        );
+    }
+
     let conn_guard = db_state
         .0
         .lock()
@@ -579,17 +614,6 @@ pub async fn update_showcase(
     }
     println!("Showcase basic info updated successfully: {}", id);
     Ok(())
-}
-
-fn get_showcase_presentation_dir(
-    app_handle: &AppHandle,
-    showcase_id: &str,
-) -> Result<PathBuf, String> {
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
-    Ok(app_data_dir.join("presentations").join(showcase_id))
 }
 
 #[tauri::command]
