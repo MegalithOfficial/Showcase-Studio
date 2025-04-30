@@ -5,14 +5,15 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tauri::State;
-
 use serde_json;
 
 mod discord;
 mod models;
 mod showcase_manager;
 mod sqlite_manager;
+mod logging;
 
+use log::{info, error};
 use discord::{fetch_discord_guilds, get_discord_channels, start_initial_indexing};
 use showcase_manager::{
     create_showcase, delete_showcase, get_selected_messages, get_showcase, list_showcases,
@@ -27,17 +28,17 @@ pub const KEYRING_SERVICE_NAME: &str = "com.megalith.showcase_app";
 
 #[tauri::command]
 async fn save_secret(key_name: String, secret: String) -> Result<(), String> {
-    println!("Attempting to save secret for key: {}", key_name);
+    info!("Attempting to save secret for key: {}", key_name);
     let entry = Entry::new(KEYRING_SERVICE_NAME, &key_name)
         .map_err(|e| format!("Failed to create keyring entry for {}: {}", key_name, e))?;
 
     match entry.set_password(&secret) {
         Ok(_) => {
-            println!("Successfully saved secret for key: {}", key_name);
+            info!("Successfully saved secret for key: {}", key_name);
             Ok(())
         }
         Err(e) => {
-            eprintln!("Error saving secret for {}: {}", key_name, e);
+            error!("Error saving secret for {}: {}", key_name, e);
 
             Err(format!(
                 "Could not save secret for '{}'. Error: {}",
@@ -49,21 +50,21 @@ async fn save_secret(key_name: String, secret: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn get_secret(key_name: String) -> Result<Option<String>, String> {
-    println!("Attempting to get secret for key: {}", key_name);
+    info!("Attempting to get secret for key: {}", key_name);
     let entry = Entry::new(KEYRING_SERVICE_NAME, &key_name)
         .map_err(|e| format!("Failed to create keyring entry for {}: {}", key_name, e))?;
 
     match entry.get_password() {
         Ok(secret) => {
-            println!("Successfully retrieved secret for key: {}", key_name);
+            info!("Successfully retrieved secret for key: {}", key_name);
             Ok(Some(secret))
         }
         Err(keyring::Error::NoEntry) => {
-            println!("No secret found for key: {}", key_name);
+            info!("No secret found for key: {}", key_name);
             Ok(None)
         }
         Err(e) => {
-            eprintln!("Error retrieving secret for {}: {}", key_name, e);
+            error!("Error retrieving secret for {}: {}", key_name, e);
             Err(format!(
                 "Could not retrieve secret for '{}'. Error: {}",
                 key_name, e
@@ -74,21 +75,21 @@ async fn get_secret(key_name: String) -> Result<Option<String>, String> {
 
 #[tauri::command]
 async fn delete_secret(key_name: String) -> Result<(), String> {
-    println!("Attempting to delete secret for key: {}", key_name);
+    info!("Attempting to delete secret for key: {}", key_name);
     let entry = Entry::new(KEYRING_SERVICE_NAME, &key_name)
         .map_err(|e| format!("Failed to create keyring entry for {}: {}", key_name, e))?;
 
     match entry.delete_credential() {
         Ok(_) => {
-            println!("Successfully deleted secret for key: {}", key_name);
+            info!("Successfully deleted secret for key: {}", key_name);
             Ok(())
         }
         Err(keyring::Error::NoEntry) => {
-            println!("No secret to delete for key: {}", key_name);
+            error!("No secret to delete for key: {}", key_name);
             Ok(())
         }
         Err(e) => {
-            eprintln!("Error deleting secret for {}: {}", key_name, e);
+            error!("Error deleting secret for {}: {}", key_name, e);
             Err(format!(
                 "Could not delete secret for '{}'. Error: {}",
                 key_name, e
@@ -111,7 +112,7 @@ async fn set_configuration(
     is_setup_complete: bool,
     db_state: State<'_, DbConnection>,
 ) -> Result<(), String> {
-    println!(
+    info!(
         "Saving configuration: server={:?}, channels={:?}, setup_complete={}",
         server_id, channel_ids, is_setup_complete
     );
@@ -211,55 +212,59 @@ pub fn run() {
         .setup(|app| {
             use tauri::Manager;
 
-            println!("Setting up database connection...");
+            let log_path = logging::init_logging(&app.handle())?;
+            info!("Application starting...");
+            info!("Log file: {}", log_path.display());
+
+            info!("Setting up database connection...");
             let connection_raw = sqlite_manager::initialize_database(app.handle())
                 .map_err(|e| format!("FATAL: Database initialization failed: {}", e))?;
 
-            println!("Database initialized successfully.");
+            info!("Database initialized successfully.");
             let db_arc = Arc::new(Mutex::new(connection_raw));
 
-            println!("Managing state of type DbConnection.");
+            info!("Managing state of type DbConnection.");
             app.manage(DbConnection(db_arc));
 
-            println!("Ensuring image directories exist...");
+            info!("Ensuring image directories exist...");
             match app.path().app_data_dir() {
                 Ok(app_data_dir) => {
                     let image_base_dir = app_data_dir.join("images");
                     let cached_image_dir = image_base_dir.join("cached");
 
                     if let Err(e) = fs::create_dir_all(&image_base_dir) {
-                        eprintln!(
+                        error!(
                             "Failed to create base image directory '{}': {}",
                             image_base_dir.display(),
                             e
                         );
                     } else {
-                        println!(
+                        info!(
                             "Base image directory checked/created: {}",
                             image_base_dir.display()
                         );
                     }
 
                     if let Err(e) = fs::create_dir_all(&cached_image_dir) {
-                        eprintln!(
+                        error!(
                             "Failed to create cached image directory '{}': {}",
                             cached_image_dir.display(),
                             e
                         );
                     } else {
-                        println!(
+                        info!(
                             "Cached image directory checked/created: {}",
                             cached_image_dir.display()
                         );
                     }
                 }
                 Err(e) => {
-                    eprintln!("CRITICAL: Could not resolve app data directory: {}", e);
+                    error!("CRITICAL: Could not resolve app data directory: {}", e);
                     return Err(format!("Could not resolve app data directory: {}", e).into());
                 }
             }
 
-            println!("Setup complete.");
+            info!("Setup complete.");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

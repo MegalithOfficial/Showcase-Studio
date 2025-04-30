@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::{AppHandle, Manager, State};
 
 use crate::models::{IndexedMessage, StorageUsage};
+use crate::logging::{info, error, warn};
 use crate::AppConfig;
 
 use base64::{engine::general_purpose::STANDARD as base64_engine, Engine as _};
@@ -163,7 +164,7 @@ fn get_existing_columns(conn: &Connection, table_name: &str) -> Result<HashMap<S
 }
 
 fn update_database_schema(conn: &mut Connection) -> Result<(), String> {
-    println!("Starting dynamic schema analysis and update...");
+    info!("Starting dynamic schema analysis and update...");
     
     let tx = conn.transaction()
         .map_err(|e| format!("Failed to start schema update transaction: {}", e))?;
@@ -175,13 +176,13 @@ fn update_database_schema(conn: &mut Connection) -> Result<(), String> {
     ];
     
     let existing_tables = get_existing_tables(&tx)?;
-    println!("Existing tables: {:?}", existing_tables);
+    info!("Existing tables: {:?}", existing_tables);
     
     for create_sql in table_definitions {
         let (table_name, expected_columns) = parse_create_table_statement(create_sql)?;
         
         if !existing_tables.contains(&table_name) {
-            println!("Creating missing table: {}", table_name);
+            info!("Creating missing table: {}", table_name);
             tx.execute(create_sql, [])
                 .map_err(|e| format!("Failed to create table {}: {}", table_name, e))?;
         } else {
@@ -189,7 +190,7 @@ fn update_database_schema(conn: &mut Connection) -> Result<(), String> {
             
             for (col_name, col_def) in &expected_columns {
                 if !existing_columns.contains_key(col_name) {
-                    println!("Adding missing column: {}.{}", table_name, col_name);
+                    info!("Adding missing column: {}.{}", table_name, col_name);
 
                     let simple_def = if col_def.contains("PRIMARY KEY") {
                         col_def.replace("PRIMARY KEY", "").trim().to_string()
@@ -224,7 +225,7 @@ fn update_database_schema(conn: &mut Connection) -> Result<(), String> {
     tx.commit()
         .map_err(|e| format!("Failed to commit schema updates: {}", e))?;
     
-    println!("Dynamic schema update completed successfully.");
+    info!("Schema update completed successfully.");
     Ok(())
 }
 
@@ -263,31 +264,31 @@ fn set_schema_version(conn: &Connection, version: i32) -> Result<(), String> {
 
 pub fn initialize_database(app_handle: &AppHandle) -> Result<Connection, String> {
     let db_path = get_db_path(app_handle)?;
-    println!("Database path: {}", db_path.display());
+    info!("Database path: {}", db_path.display());
     
     let is_new_database = !db_path.exists();
-    println!("Database exists: {}", !is_new_database);
+    info!("Database exists: {}", !is_new_database);
 
     let mut conn = Connection::open(&db_path)
         .map_err(|e| format!("Failed to open database connection: {}", e))?;
     
-    println!("Database connection opened successfully.");
+    info!("Database connection opened successfully.");
 
     conn.query_row("PRAGMA journal_mode=WAL;", [], |_| Ok(()))
         .map_err(|e| format!("Failed to set journal_mode=WAL: {}", e))?;
 
     conn.execute("PRAGMA foreign_keys=ON;", [])
         .map_err(|e| format!("Failed to enable foreign keys: {}", e))?;
-    println!("Enabled foreign keys.");
+    info!("Enabled foreign keys.");
 
     conn.execute("PRAGMA synchronous=NORMAL;", [])
         .map_err(|e| format!("Failed to set synchronous=NORMAL: {}", e))?;
-    println!("Set synchronous=NORMAL.");
+    info!("Set synchronous=NORMAL.");
 
-    println!("Applied PRAGMAs.");
+    info!("Applied PRAGMAs.");
 
     if is_new_database {
-        println!("Setting up new database...");
+        info!("Setting up new database...");
         
         conn.execute(SQL_CREATE_SCHEMA_VERSION_TABLE, [])
             .map_err(|e| format!("Failed to create schema_version table: {}", e))?;
@@ -295,19 +296,19 @@ pub fn initialize_database(app_handle: &AppHandle) -> Result<Connection, String>
         let tx = conn.transaction()
             .map_err(|e| format!("Failed to start schema transaction: {}", e))?;
 
-        println!("Starting schema creation transaction...");
+        info!("Starting schema creation transaction...");
 
         tx.execute(SQL_CREATE_CONFIG_TABLE, [])
             .map_err(|e| format!("Failed to create config table: {}", e))?;
-        println!("Created config table.");
+        info!("Created config table.");
 
         tx.execute(SQL_CREATE_SHOWCASES_TABLE, [])
             .map_err(|e| format!("Failed to create showcases table: {}", e))?;
-        println!("Created showcases table.");
+        info!("Created showcases table.");
 
         tx.execute(SQL_CREATE_MESSAGES_TABLE, [])
             .map_err(|e| format!("Failed to create messages table: {}", e))?;
-        println!("Created messages table.");
+        info!("Created messages table.");
 
         // Create indexes
         tx.execute(SQL_CREATE_MESSAGES_CHANNEL_INDEX, [])
@@ -316,26 +317,26 @@ pub fn initialize_database(app_handle: &AppHandle) -> Result<Connection, String>
             .map_err(|e| format!("Failed to create messages timestamp index: {}", e))?;
         tx.execute(SQL_CREATE_MESSAGES_AUTHOR_INDEX, [])
             .map_err(|e| format!("Failed to create messages author index: {}", e))?;
-        println!("Created messages indexes.");
+        info!("Created messages indexes.");
 
         set_schema_version(&tx, CURRENT_SCHEMA_VERSION)?;
 
         tx.commit()
             .map_err(|e| format!("Failed to commit schema transaction: {}", e))?;
         
-        println!("New database schema created with version {}", CURRENT_SCHEMA_VERSION);
+        info!("New database schema created with version {}", CURRENT_SCHEMA_VERSION);
     } 
     else {
-        println!("Existing database found, checking schema version...");
+        warn!("Existing database found, checking schema version...");
         
         conn.execute(SQL_CREATE_SCHEMA_VERSION_TABLE, [])
             .map_err(|e| format!("Failed to create schema_version table: {}", e))?;
         
         let current_version = get_schema_version(&conn)?;
-        println!("Current database schema version: {}", current_version);
+        info!("Current database schema version: {}", current_version);
         
         if current_version < CURRENT_SCHEMA_VERSION {
-            println!("Database schema needs update from version {} to {}", 
+            warn!("Database schema needs update from version {} to {}", 
                      current_version, CURRENT_SCHEMA_VERSION);
             update_database_schema(&mut conn)?;
         } else if current_version > CURRENT_SCHEMA_VERSION {
@@ -344,16 +345,16 @@ pub fn initialize_database(app_handle: &AppHandle) -> Result<Connection, String>
                 current_version, CURRENT_SCHEMA_VERSION
             ));
         } else {
-            println!("Database schema is already at current version {}", CURRENT_SCHEMA_VERSION);
+            info!("Database schema is already at current version {}", CURRENT_SCHEMA_VERSION);
         }
     }
 
-    println!("Database schema initialized successfully.");
+    info!("Database schema initialized successfully.");
     Ok(conn)
 }
 
 pub fn retrieve_config(conn_guard: &MutexGuard<Connection>) -> Result<AppConfig, String> {
-    println!("Executing retrieve_config_logic...");
+    info!("Retrieving config...");
     let mut stmt = conn_guard
         .prepare("SELECT key, value FROM config;")
         .map_err(|e| format!("Failed to prepare config query: {}", e))?;
@@ -376,7 +377,7 @@ pub fn retrieve_config(conn_guard: &MutexGuard<Connection>) -> Result<AppConfig,
                     "selected_server_id" => config.selected_server_id = Some(value),
                     "selected_channel_ids" => {
                         config.selected_channel_ids = serde_json::from_str(&value).unwrap_or_else(|e| {
-                           eprintln!("Failed to deserialize channel IDs: {}, defaulting to empty. Value was: '{}'", e, value);
+                           error!("Failed to deserialize channel IDs: {}, defaulting to empty. Value was: '{}'", e, value);
                            Vec::new()
                        });
                     }
@@ -387,11 +388,11 @@ pub fn retrieve_config(conn_guard: &MutexGuard<Connection>) -> Result<AppConfig,
                 }
             }
             Err(e) => {
-                eprintln!("Error processing config row: {}", e);
+                error!("Error processing config row: {}", e);
             }
         }
     }
-    println!("retrieve_config_logic finished successfully.");
+    info!("retrieve_config_logic finished successfully.");
     Ok(config)
 }
 
@@ -403,7 +404,7 @@ fn map_row_to_indexed_message(row: &Row) -> Result<IndexedMessage, RusqliteError
     let attachments: Vec<String> = match attachments_json_opt {
         Some(json_str) if !json_str.is_empty() && json_str != "null" => {
             serde_json::from_str(&json_str).map_err(|e| {
-                eprintln!(
+                error!(
                     "Failed to deserialize attachments JSON (expected array of strings) for message_id {:?}: {}. JSON: '{}'",
                     row.get::<_, String>(0).ok(), 
                     e,
@@ -435,7 +436,7 @@ fn map_row_to_indexed_message(row: &Row) -> Result<IndexedMessage, RusqliteError
 pub async fn get_indexed_messages(
     db_state: State<'_, DbConnection>,
 ) -> Result<Vec<IndexedMessage>, String> {
-    println!("Fetching all indexed messages from DB...");
+    info!("Fetching all indexed messages from DB...");
     let conn_guard = db_state
         .0
         .lock()
@@ -453,7 +454,7 @@ pub async fn get_indexed_messages(
         .collect::<Result<Vec<IndexedMessage>, _>>()
         .map_err(|e| format!("Error processing message row: {}", e))?;
 
-    println!("Successfully fetched {} indexed messages.", messages.len());
+    info!("Successfully fetched {} indexed messages.", messages.len());
     Ok(messages)
 }
 
@@ -475,7 +476,7 @@ fn calculate_dir_size(path: &Path) -> Result<u64, std::io::Error> {
 
 #[tauri::command]
 pub async fn get_storage_usage(app_handle: AppHandle) -> Result<StorageUsage, String> {
-    println!("Calculating storage usage...");
+    info!("Calculating storage usage...");
 
     let app_data_dir = app_handle
         .path()
@@ -488,7 +489,7 @@ pub async fn get_storage_usage(app_handle: AppHandle) -> Result<StorageUsage, St
             if metadata.is_file() {
                 metadata.len()
             } else {
-                eprintln!(
+                error!(
                     "Warning: Expected database file, but found directory or other at {}",
                     db_path.display()
                 );
@@ -496,21 +497,21 @@ pub async fn get_storage_usage(app_handle: AppHandle) -> Result<StorageUsage, St
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            println!("Database file not found at {}", db_path.display());
+            info!("Database file not found at {}", db_path.display());
             0
         }
         Err(e) => {
             return Err(format!("Failed to get database file metadata: {}", e));
         }
     };
-    println!("Database size: {} bytes", database_size_bytes);
+    info!("Database size: {} bytes", database_size_bytes);
 
     let image_cache_dir = app_data_dir.join("images").join("cached");
     let image_cache_size_bytes = if image_cache_dir.is_dir() {
         match calculate_dir_size(&image_cache_dir) {
             Ok(size) => size,
             Err(e) => {
-                eprintln!(
+                error!(
                     "Warning: Failed to calculate image cache directory size: {}",
                     e
                 );
@@ -518,13 +519,13 @@ pub async fn get_storage_usage(app_handle: AppHandle) -> Result<StorageUsage, St
             }
         }
     } else {
-        println!(
+        info!(
             "Image cache directory not found at {}",
             image_cache_dir.display()
         );
         0
     };
-    println!("Image Cache size: {} bytes", image_cache_size_bytes);
+    info!("Image Cache size: {} bytes", image_cache_size_bytes);
 
     let total_size_bytes = database_size_bytes + image_cache_size_bytes;
     let usage = StorageUsage {
@@ -534,7 +535,6 @@ pub async fn get_storage_usage(app_handle: AppHandle) -> Result<StorageUsage, St
         database_path: db_path.to_string_lossy().to_string(),
     };
 
-    println!("Total storage usage calculated.");
     Ok(usage)
 }
 
@@ -551,7 +551,7 @@ pub async fn get_cached_image_data(
     app_handle: AppHandle,
     relative_path: String,
 ) -> Result<String, String> {
-    println!("Fetching image data for relative path: {}", relative_path);
+    info!("Fetching image data for relative path: {}", relative_path);
 
     if relative_path.contains("..")
         || relative_path.starts_with('/')
@@ -563,7 +563,7 @@ pub async fn get_cached_image_data(
     let base_dir = get_image_base_dir(&app_handle)?;
     let file_path = base_dir.join(&relative_path);
 
-    println!("Attempting to read image file: {}", file_path.display());
+    info!("Attempting to read image file: {}", file_path.display());
 
     match fs::read(&file_path) {
         Ok(bytes) => {
@@ -574,15 +574,15 @@ pub async fn get_cached_image_data(
 
             let data_uri = format!("data:{};base64,{}", mime_type.essence_str(), base64_str);
 
-            println!("Successfully read and encoded image: {}", relative_path);
+            info!("Successfully read and encoded image: {}", relative_path);
             Ok(data_uri)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!("Image file not found: {}", file_path.display());
+            error!("Image file not found: {}", file_path.display());
             Err(format!("Image not found: {}", relative_path))
         }
         Err(e) => {
-            eprintln!("Failed to read image file {}: {}", file_path.display(), e);
+            error!("Failed to read image file {}: {}", file_path.display(), e);
             Err(format!("Failed to read image file: {}", e))
         }
     }

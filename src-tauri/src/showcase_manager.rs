@@ -1,5 +1,7 @@
 use crate::models::{SelectedMessage, Showcase, ShowcaseImage, UpdateShowcasePayload};
 use crate::sqlite_manager::DbConnection;
+use crate::logging::{info, error, warn};
+
 use base64::{engine::general_purpose::STANDARD as base64_engine, Engine as _};
 use chrono::Utc;
 use rusqlite::{params, types::Value as RusqliteValue, Error as RusqliteError, Row};
@@ -72,7 +74,7 @@ fn map_row_to_showcase(row: &Row) -> Result<Showcase, RusqliteError> {
         if let Some(ref s) = raw {
             if !s.trim().is_empty() && s.trim() != "null" {
                 return serde_json::from_str(s).map(Some).map_err(|e| {
-                    eprintln!("❌ JSON parse error in column `{}`: {}", col_name, e);
+                    error!("❌ JSON parse error in column `{}`: {}", col_name, e);
                     RusqliteError::FromSqlConversionFailure(
                         idx,
                         rusqlite::types::Type::Text,
@@ -104,7 +106,7 @@ pub async fn create_showcase(
     description: Option<String>,
     db_state: State<'_, DbConnection>,
 ) -> Result<String, String> {
-    println!("Attempting to create showcase: title='{}'", title);
+    info!("Attempting to create showcase: title='{}'", title);
     let new_id = Uuid::new_v4().to_string();
     let current_ts = Utc::now().timestamp();
     let status_val = "Draft";
@@ -125,12 +127,12 @@ pub async fn create_showcase(
 
     match result {
         Ok(rows_affected) if rows_affected > 0 => {
-            println!("Showcase created successfully with ID: {}", new_id);
+            info!("Showcase created successfully with ID: {}", new_id);
             Ok(new_id)
         }
         Ok(_) => Err("Failed to create showcase (0 rows affected). Check constraints.".to_string()),
         Err(e) => {
-            eprintln!("Error creating showcase: {}", e);
+            error!("Error creating showcase: {}", e);
             Err(format!("Database error creating showcase: {}", e))
         }
     }
@@ -142,7 +144,7 @@ pub async fn update_showcase_phase(
     phase: i32,
     db_state: State<'_, DbConnection>,
 ) -> Result<(), String> {
-    println!("Updating phase for showcase ID: {} to {}", id, phase);
+    info!("Updating phase for showcase ID: {} to {}", id, phase);
     if !(1..=4).contains(&phase) {
         return Err("Invalid phase value provided (must be 1-4).".to_string());
     }
@@ -161,7 +163,7 @@ pub async fn update_showcase_phase(
     if rows == 0 {
         Err(format!("Showcase ID '{}' not found for phase update.", id))
     } else {
-        println!("Phase updated successfully for showcase ID: {}", id);
+        info!("Phase updated successfully for showcase ID: {}", id);
         Ok(())
     }
 }
@@ -172,7 +174,7 @@ pub async fn save_selected_messages(
     selected_messages: Vec<SelectedMessage>,
     db_state: State<'_, DbConnection>,
 ) -> Result<(), String> {
-    println!("Saving selected messages for showcase ID: {}", id);
+    info!("Saving selected messages for showcase ID: {}", id);
     let conn_guard = db_state
         .0
         .lock()
@@ -195,7 +197,7 @@ pub async fn save_selected_messages(
             id
         ))
     } else {
-        println!(
+        info!(
             "Selected messages saved and phase updated to {} for showcase ID: {}",
             next_phase, id
         );
@@ -208,7 +210,7 @@ pub async fn get_selected_messages(
     id: String,
     db_state: State<'_, DbConnection>,
 ) -> Result<Vec<SelectedMessage>, String> {
-    println!("Getting selected messages for showcase ID: {}", id);
+    info!("Getting selected messages for showcase ID: {}", id);
     let conn_guard = db_state
         .0
         .lock()
@@ -243,7 +245,7 @@ pub async fn upload_showcase_image(
     image_data_uri: String,
     db_state: State<'_, DbConnection>,
 ) -> Result<(), String> {
-    println!(
+    info!(
         "Uploading image for showcase ID: {}, message ID: {}",
         id, image_metadata.message_id
     );
@@ -275,7 +277,7 @@ pub async fn upload_showcase_image(
                 e
             )
         })?;
-        println!(
+        info!(
             "Image file saved successfully: {}",
             file_path_clone.display()
         );
@@ -319,13 +321,13 @@ pub async fn upload_showcase_image(
 
     if let Some(index) = existing_index {
         updated_images[index] = image_metadata.clone();
-        println!(
+        warn!(
             "Replaced existing image for message ID: {} in showcase ID: {}",
             image_metadata.message_id, id
         );
     } else {
         updated_images.push(image_metadata.clone());
-        println!(
+        info!(
             "Added new image for message ID: {} to showcase ID: {}",
             image_metadata.message_id, id
         );
@@ -342,7 +344,7 @@ pub async fn upload_showcase_image(
         )
         .map_err(|e| format!("DB error updating images after upload: {}", e))?;
 
-    println!(
+    info!(
         "Images metadata and timestamp updated for showcase ID: {} after image upload.",
         id
     );
@@ -355,7 +357,7 @@ pub async fn get_showcase_images(
     id: String,
     db_state: State<'_, DbConnection>,
 ) -> Result<Vec<ShowcaseImage>, String> {
-    println!("Getting showcase images for showcase ID: {}", id);
+    info!("Getting showcase images for showcase ID: {}", id);
     let conn_guard = db_state
         .0
         .lock()
@@ -388,7 +390,7 @@ pub async fn sort_showcase_images(
     sorted_images: Vec<ShowcaseImage>,
     db_state: State<'_, DbConnection>,
 ) -> Result<(), String> {
-    println!(
+    info!(
         "Saving final sorted images metadata for showcase ID: {}",
         id
     );
@@ -416,7 +418,7 @@ pub async fn sort_showcase_images(
             id
         ))
     } else {
-        println!(
+        info!(
             "Final images metadata saved and phase updated to {} for showcase ID: {}",
             final_phase, id
         );
@@ -429,7 +431,7 @@ pub async fn get_showcase(
     id: String,
     db_state: State<'_, DbConnection>,
 ) -> Result<Showcase, String> {
-    println!("Attempting to get showcase with ID: {}", id);
+    info!("Attempting to get showcase with ID: {}", id);
     let conn_guard = db_state
         .0
         .lock()
@@ -441,7 +443,7 @@ pub async fn get_showcase(
     );
 
     if let Ok(ref showcase) = result {
-        println!("Showcase images_json: {:?}", showcase.images);
+        info!("Showcase images_json: {:?}", showcase.images);
     }
 
     match result {
@@ -458,7 +460,7 @@ pub async fn get_showcase(
 
 #[tauri::command]
 pub async fn list_showcases(db_state: State<'_, DbConnection>) -> Result<Vec<Showcase>, String> {
-    println!("Attempting to list all showcases...");
+    info!("Attempting to list all showcases...");
     let conn_guard = db_state
         .0
         .lock()
@@ -472,7 +474,7 @@ pub async fn list_showcases(db_state: State<'_, DbConnection>) -> Result<Vec<Sho
     let showcases = showcase_iter
         .collect::<Result<Vec<Showcase>, _>>()
         .map_err(|e| format!("Error processing showcase row during list: {}", e))?;
-    println!("Found {} showcases.", showcases.len());
+    info!("Found {} showcases.", showcases.len());
     Ok(showcases)
 }
 
@@ -482,11 +484,11 @@ pub async fn delete_showcase(
     id: String,
     db_state: State<'_, DbConnection>,
 ) -> Result<(), String> {
-    println!("Attempting to delete showcase with ID: {}", id);
+    info!("Attempting to delete showcase with ID: {}", id);
 
     let image_dir = get_showcase_image_dir(&app_handle, &id)?;
     if image_dir.exists() {
-        println!("Deleting image directory: {}", image_dir.display());
+        info!("Deleting image directory: {}", image_dir.display());
         let image_dir_for_task = image_dir.clone();
         tokio::task::spawn_blocking(move || fs::remove_dir_all(&image_dir_for_task))
             .await
@@ -499,7 +501,7 @@ pub async fn delete_showcase(
                 )
             })?;
     } else {
-        println!(
+        warn!(
             "Image directory not found, skipping deletion: {}",
             image_dir.display()
         );
@@ -507,7 +509,7 @@ pub async fn delete_showcase(
 
     let presentation_dir = get_showcase_presentation_dir(&app_handle, &id)?;
     if presentation_dir.exists() {
-        println!(
+        info!(
             "Deleting presentation directory: {}",
             presentation_dir.display()
         );
@@ -523,7 +525,7 @@ pub async fn delete_showcase(
                 )
             })?;
     } else {
-        println!(
+        warn!(
             "Presentation directory not found, skipping deletion: {}",
             presentation_dir.display()
         );
@@ -538,10 +540,10 @@ pub async fn delete_showcase(
         .map_err(|e| format!("Database error deleting showcase row: {}", e))?;
 
     if rows_affected > 0 {
-        println!("Showcase row deleted successfully: {}", id);
+        info!("Showcase row deleted successfully: {}", id);
         Ok(())
     } else {
-        println!(
+        warn!(
             "Showcase row with ID '{}' not found for deletion (or already deleted).",
             id
         );
@@ -555,7 +557,7 @@ pub async fn update_showcase(
     payload: UpdateShowcasePayload,
     db_state: State<'_, DbConnection>,
 ) -> Result<(), String> {
-    println!(
+    info!(
         "Attempting to update showcase (basic info only) ID: {}, Payload: {:?}",
         id, payload
     );
@@ -581,7 +583,7 @@ pub async fn update_showcase(
     }
 
     if set_parts.is_empty() {
-        println!("No basic showcase data provided for update. Skipping.");
+        error!("No basic showcase data provided for update. Skipping.");
         return Ok(());
     }
 
@@ -601,7 +603,7 @@ pub async fn update_showcase(
         .map(|v| v as &dyn rusqlite::ToSql)
         .collect();
 
-    println!("Executing basic update SQL: {}", sql);
+    info!("Executing update: {}", sql);
     let rows_affected = conn_guard
         .execute(&sql, params_refs.as_slice())
         .map_err(|e| format!("Database error updating showcase basic info: {}", e))?;
@@ -612,7 +614,7 @@ pub async fn update_showcase(
             id
         ));
     }
-    println!("Showcase basic info updated successfully: {}", id);
+    info!("Showcase basic info updated successfully: {}", id);
     Ok(())
 }
 
@@ -624,7 +626,7 @@ pub async fn save_showcase_pptx(
     pptx_base64: String,
     db_state: State<'_, DbConnection>,
 ) -> Result<String, String> {
-    println!("Saving PPTX for showcase ID: {}", id);
+    info!("Saving PPTX for showcase ID: {}", id);
 
     let pptx_bytes = base64_engine
         .decode(pptx_base64)
@@ -670,7 +672,7 @@ pub async fn save_showcase_pptx(
             )
         })?;
 
-        println!(
+        info!(
             "PPTX file saved successfully: {}",
             file_path_clone.display()
         );
@@ -695,7 +697,7 @@ pub async fn save_showcase_pptx(
         )
         .map_err(|e| format!("DB error updating showcase with PPTX path: {}", e))?;
 
-    println!(
+    info!(
         "Showcase updated with PPTX path and set to final phase {} for ID: {}",
         final_phase, id
     );
@@ -709,7 +711,7 @@ pub async fn open_showcase_pptx(
     id: String,
     db_state: State<'_, DbConnection>,
 ) -> Result<String, String> {
-    println!("Opening PPTX for showcase ID: {}", id);
+    info!("Opening PPTX for showcase ID: {}", id);
 
     let conn_guard = db_state
         .0
@@ -754,10 +756,10 @@ pub async fn check_showcase_pptx_exists(
     let presentation_dir = app_data_dir.join("presentations");
     let pptx_path = presentation_dir.join(format!("{}/showcase_{}.pptx", id, id));
 
-    println!("Checking if PPTX exists at: {}", pptx_path.display());
+    info!("Checking if PPTX exists at: {}", pptx_path.display());
 
     let exists = pptx_path.exists();
-    println!("File exists: {}", exists);
+    info!("File exists: {}", exists);
 
     Ok(exists)
 }

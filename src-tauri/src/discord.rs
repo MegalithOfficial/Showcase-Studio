@@ -18,6 +18,7 @@ use tokio::time::sleep;
 
 use crate::sqlite_manager::{retrieve_config, DbConnection};
 use crate::{AppConfig, KEYRING_SERVICE_NAME};
+use crate::logging::{info, error, warn};
 
 use chrono::{DateTime, Datelike, Months, NaiveDate, TimeZone, Utc};
 use reqwest;
@@ -62,7 +63,7 @@ fn get_cached_image_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
 pub async fn get_discord_channels(
     guild_id_str: String,
 ) -> Result<Vec<SerializableChannel>, String> {
-    println!(
+    info!(
         "Attempting to fetch channels for guild ID: {}",
         guild_id_str
     );
@@ -97,7 +98,7 @@ pub async fn get_discord_channels(
 
     match http.get_channels(guild_id).await {
         Ok(channels) => {
-            println!(
+            info!(
                 "Successfully fetched {} channels for guild {}",
                 channels.len(),
                 guild_id
@@ -132,7 +133,7 @@ pub async fn get_discord_channels(
             Ok(serializable_channels)
         }
         Err(e) => {
-            eprintln!("Failed to fetch channels for guild {}: {}", guild_id, e);
+            error!("Failed to fetch channels for guild {}: {}", guild_id, e);
             if let serenity::Error::Http(http_err) = &e {
                 if let Some(status) = http_err.status_code() {
                     match status.as_u16() {
@@ -167,7 +168,7 @@ pub async fn get_discord_channels(
 
 #[tauri::command]
 pub async fn fetch_discord_guilds() -> Result<Vec<SerializableGuild>, String> {
-    println!("Attempting to fetch Discord guilds (from discord module)...");
+    info!("Attempting to fetch Discord guilds (from discord module)...");
 
     let token_key_name = "discordBotToken";
     let token_entry = Entry::new(KEYRING_SERVICE_NAME, token_key_name)
@@ -196,7 +197,7 @@ pub async fn fetch_discord_guilds() -> Result<Vec<SerializableGuild>, String> {
 
     match http.get_guilds(None, None).await {
         Ok(guilds) => {
-            println!("Successfully fetched {} guilds.", guilds.len());
+            info!("Successfully fetched {} guilds.", guilds.len());
             let serializable_guilds = guilds
                 .into_iter()
                 .map(|g: GuildInfo| SerializableGuild {
@@ -208,7 +209,7 @@ pub async fn fetch_discord_guilds() -> Result<Vec<SerializableGuild>, String> {
             Ok(serializable_guilds)
         }
         Err(e) => {
-            eprintln!("Failed to fetch guilds from Discord API: {}", e);
+            error!("Failed to fetch guilds from Discord API: {}", e);
             if let serenity::Error::Http(http_err) = &e {
                 if let Some(status) = http_err.status_code() {
                     if status.as_u16() == 401 {
@@ -226,7 +227,7 @@ pub async fn start_initial_indexing(
     app_handle: AppHandle,
     db_state: State<'_, DbConnection>,
 ) -> Result<(), String> {
-    println!("Starting initial message indexing (downloading images to cache)...");
+    info!("Starting initial message indexing (downloading images to cache)...");
 
     let token_key_name = "discordBotToken";
     let token_entry = Entry::new(KEYRING_SERVICE_NAME, token_key_name)
@@ -257,11 +258,11 @@ pub async fn start_initial_indexing(
         app_handle
             .emit("indexing-status", "No channels selected")
             .unwrap_or_default();
-        println!("No channels selected, indexing aborted.");
+        warn!("No channels selected, indexing aborted.");
         return Ok(());
     }
     let channel_ids = config.selected_channel_ids;
-    println!("Channels to index: {:?}", channel_ids);
+    info!("Channels to index: {:?}", channel_ids);
 
     let now = Utc::now();
     let first_day_current = NaiveDate::from_ymd_opt(now.year(), now.month(), 1).unwrap();
@@ -272,13 +273,13 @@ pub async fn start_initial_indexing(
     let start_utc: DateTime<Utc> =
         Utc.from_utc_datetime(&target_month_start.and_hms_opt(0, 0, 0).unwrap());
     let start_ts = start_utc.timestamp();
-    println!(
+    info!(
         "Indexing messages since: {} (Timestamp: {})",
         start_utc, start_ts
     );
 
     let cache_base_dir = get_cached_image_dir(&app_handle)?;
-    println!(
+    info!(
         "Cached images will be stored base: {}",
         cache_base_dir.display()
     );
@@ -288,7 +289,7 @@ pub async fn start_initial_indexing(
     let db_arc = db_state.0.clone();
 
     tokio::spawn(async move {
-        println!("Background indexing task started (downloading).");
+        info!("Background indexing task started (downloading).");
         let mut total_fetched_metadata = 0;
         let mut total_messages_processed_for_db = 0;
         let mut total_images_saved_or_found = 0;
@@ -302,7 +303,7 @@ pub async fn start_initial_indexing(
             let channel_id = match chan_str.parse::<u64>() {
                 Ok(id) => ChannelId::new(id),
                 Err(_) => {
-                    eprintln!("Invalid channel ID format: {}", chan_str);
+                    error!("Invalid channel ID format: {}", chan_str);
                     app_clone
                         .emit(
                             "indexing-error",
@@ -312,7 +313,7 @@ pub async fn start_initial_indexing(
                     continue;
                 }
             };
-            println!("Starting indexing for channel: {}", channel_id);
+            info!("Starting indexing for channel: {}", channel_id);
             app_clone
                 .emit(
                     "indexing-status",
@@ -330,7 +331,7 @@ pub async fn start_initial_indexing(
                 match messages_result {
                     Ok(mut msgs) => {
                         if msgs.is_empty() {
-                            println!("No more messages found in channel {}", channel_id);
+                            warn!("No more messages found in channel {}", channel_id);
                             break 'message_loop;
                         }
                         total_fetched_metadata += msgs.len();
@@ -398,7 +399,7 @@ pub async fn start_initial_indexing(
                                 let absolute_path = match get_cached_image_dir(&app_clone) {
                                     Ok(dir) => dir.join(&local_filename),
                                     Err(e) => {
-                                        eprintln!("Error getting cache dir: {}", e);
+                                        error!("Error getting cache dir: {}", e);
                                         attachment_processing_failed = true;
                                         break;
                                     }
@@ -412,7 +413,7 @@ pub async fn start_initial_indexing(
                                 };
 
                                 if path_exists {
-                                    println!("Skipping download, file exists: {}", local_filename);
+                                    warn!("Skipping download, file exists: {}", local_filename);
                                     saved_filenames_for_msg.push(relative_path_str.clone());
                                     total_images_saved_or_found += 1;
                                     continue;
@@ -449,7 +450,7 @@ pub async fn start_initial_indexing(
 
                                                     match save_result {
                                                         Ok(Ok(())) => {
-                                                            println!(
+                                                            info!(
                                                                 "Saved image: {}",
                                                                 local_filename
                                                             );
@@ -458,7 +459,7 @@ pub async fn start_initial_indexing(
                                                             total_images_saved_or_found += 1;
                                                         }
                                                         Ok(Err(e)) => {
-                                                            eprintln!(
+                                                            error!(
                                                                 "Failed to write file {}: {}",
                                                                 local_filename, e
                                                             );
@@ -466,7 +467,7 @@ pub async fn start_initial_indexing(
                                                             break;
                                                         }
                                                         Err(e) => {
-                                                            eprintln!(
+                                                            error!(
                                                                 "File write task failed for {}: {}",
                                                                 local_filename, e
                                                             );
@@ -476,7 +477,7 @@ pub async fn start_initial_indexing(
                                                     }
                                                 }
                                                 Err(e) => {
-                                                    eprintln!(
+                                                    error!(
                                                         "Failed to read bytes from download {}: {}",
                                                         download_url, e
                                                     );
@@ -485,7 +486,7 @@ pub async fn start_initial_indexing(
                                                 }
                                             }
                                         } else {
-                                            eprintln!(
+                                            error!(
                                                 "Download failed for {}: Status {}",
                                                 download_url,
                                                 response.status()
@@ -493,7 +494,7 @@ pub async fn start_initial_indexing(
                                         }
                                     }
                                     Err(e) => {
-                                        eprintln!(
+                                        error!(
                                             "Download request failed for {}: {}",
                                             download_url, e
                                         );
@@ -508,7 +509,7 @@ pub async fn start_initial_indexing(
                                 batch_data_for_db.push((msg.clone(), saved_filenames_for_msg));
                                 total_messages_processed_for_db += 1;
                             } else if attachment_processing_failed {
-                                println!("Skipping DB insert for message {} due to attachment processing failure.", msg.id);
+                                error!("Skipping DB insert for message {} due to attachment processing failure.", msg.id);
                                 app_clone
                                     .emit(
                                         "indexing-error",
@@ -552,10 +553,10 @@ pub async fn start_initial_indexing(
                             // Handle insert result
                             match insert_result {
                                 Ok(Ok(())) => {
-                                    println!("Successfully inserted batch of {} message(s) into DB for channel {}.", current_batch_size, channel_id);
+                                    info!("Successfully inserted batch of {} message(s) into DB for channel {}.", current_batch_size, channel_id);
                                 }
                                 Ok(Err(e)) => {
-                                    eprintln!(
+                                    error!(
                                         "DB Error inserting batch for channel {}: {}",
                                         channel_id, e
                                     );
@@ -564,7 +565,7 @@ pub async fn start_initial_indexing(
                                         .unwrap_or_default();
                                 }
                                 Err(e) => {
-                                    eprintln!(
+                                    error!(
                                         "Blocking task failed during DB insert for channel {}: {}",
                                         channel_id, e
                                     );
@@ -576,12 +577,12 @@ pub async fn start_initial_indexing(
                         }
 
                         if reached_older_messages {
-                            println!("Reached messages older than threshold in channel {}. Stopping fetch.", channel_id);
+                            info!("Reached messages older than threshold in channel {}. Stopping fetch.", channel_id);
                             break 'message_loop;
                         }
                     } 
                     Err(e) => {
-                        eprintln!("Error fetching message batch for {}: {:?}", channel_id, e);
+                        error!("Error fetching message batch for {}: {:?}", channel_id, e);
                         app_clone
                             .emit(
                                 "indexing-error",
@@ -601,10 +602,10 @@ pub async fn start_initial_indexing(
                     }
                 }
             }
-            println!("Finished indexing channel {}", channel_id);
+            info!("Finished indexing channel {}", channel_id);
         }
 
-        println!(
+        info!(
             "Background indexing task finished. Metadata Fetched: {}, Messages Processed: {}, Images Saved/Found: {}",
             total_fetched_metadata, total_messages_processed_for_db, total_images_saved_or_found
         );
