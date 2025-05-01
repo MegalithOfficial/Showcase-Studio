@@ -148,7 +148,7 @@ export const IndexingSection: React.FC = () => {
          }).catch(err => Logger.error("Error cleaning up listeners:", err));
          toast.dismiss("indexing");
       };
-   }, [fetchData]);
+   }, []);
 
 
    const handleToggleChannelIndexing = async (channelId: string) => {
