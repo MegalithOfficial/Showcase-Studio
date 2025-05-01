@@ -1,5 +1,5 @@
 use regex::Regex;
-use rusqlite::Connection as RusqliteConnection;
+use rusqlite::{params, Connection as RusqliteConnection};
 use rusqlite::{Connection, Error as RusqliteError, Row};
 use serde_json;
 use std::collections::HashMap;
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::{AppHandle, Manager, State};
 
-use crate::models::{IndexedMessage, StorageUsage};
+use crate::models::{IndexedMessage, StorageUsage, CleanupStats};
 use crate::logging::{info, error, warn};
 use crate::AppConfig;
 
@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS messages (
     author_avatar TEXT,                        
     message_content TEXT NOT NULL,             
     attachments TEXT NOT NULL DEFAULT '[]',   
-    timestamp INTEGER NOT NULL                 
+    timestamp INTEGER NOT NULL,
+    is_used INTEGER NOT NULL DEFAULT 0      
 );";
 
 const SQL_CREATE_MESSAGES_CHANNEL_INDEX: &str = "
@@ -398,7 +399,7 @@ pub fn retrieve_config(conn_guard: &MutexGuard<Connection>) -> Result<AppConfig,
 
 fn map_row_to_indexed_message(row: &Row) -> Result<IndexedMessage, RusqliteError> {
     // 0: message_id, 1: channel_id, 2: author_id, 3: author_name,
-    // 4: author_avatar, 5: message_content, 6: attachments (JSON array of strings), 7: timestamp
+    // 4: author_avatar, 5: message_content, 6: attachments (JSON array of strings), 7: timestamp, 8: is_used
     let attachments_json_opt: Option<String> = row.get(6)?;
 
     let attachments: Vec<String> = match attachments_json_opt {
@@ -420,6 +421,8 @@ fn map_row_to_indexed_message(row: &Row) -> Result<IndexedMessage, RusqliteError
         _ => Vec::new(),
     };
 
+    let is_used: bool = row.get(8).unwrap_or(false);
+
     Ok(IndexedMessage {
         message_id: row.get(0)?,
         channel_id: row.get(1)?,
@@ -429,6 +432,7 @@ fn map_row_to_indexed_message(row: &Row) -> Result<IndexedMessage, RusqliteError
         message_content: row.get(5)?,
         attachments,
         timestamp: row.get(7)?,
+        is_used,
     })
 }
 
@@ -443,7 +447,7 @@ pub async fn get_indexed_messages(
         .map_err(|e| format!("DB lock error: {}", e))?;
 
     let mut stmt = conn_guard.prepare(
-        "SELECT message_id, channel_id, author_id, author_name, author_avatar, message_content, attachments, timestamp FROM messages ORDER BY timestamp DESC"
+        "SELECT message_id, channel_id, author_id, author_name, author_avatar, message_content, attachments, timestamp, is_used FROM messages ORDER BY timestamp DESC"
     ).map_err(|e| format!("Failed to prepare message query: {}", e))?;
 
     let message_iter = stmt
@@ -474,23 +478,42 @@ fn calculate_dir_size(path: &Path) -> Result<u64, std::io::Error> {
     Ok(total_size)
 }
 
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+    
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} bytes", bytes)
+    }
+}
+
 #[tauri::command]
-pub async fn get_storage_usage(app_handle: AppHandle) -> Result<StorageUsage, String> {
+pub async fn get_storage_usage(
+    app_handle: AppHandle,
+    db_state: State<'_, DbConnection>,
+) -> Result<StorageUsage, String> {
     info!("Calculating storage usage...");
 
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+        let conn_guard = db_state
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
 
-    let db_path = app_data_dir.join(DB_FILENAME);
+    let db_path = get_db_path(&app_handle)?;
     let database_size_bytes = match fs::metadata(&db_path) {
         Ok(metadata) => {
             if metadata.is_file() {
                 metadata.len()
             } else {
                 error!(
-                    "Warning: Expected database file, but found directory or other at {}",
+                    "Expected database file, but found directory or other at {}",
                     db_path.display()
                 );
                 0
@@ -504,38 +527,89 @@ pub async fn get_storage_usage(app_handle: AppHandle) -> Result<StorageUsage, St
             return Err(format!("Failed to get database file metadata: {}", e));
         }
     };
-    info!("Database size: {} bytes", database_size_bytes);
 
-    let image_cache_dir = app_data_dir.join("images").join("cached");
-    let image_cache_size_bytes = if image_cache_dir.is_dir() {
-        match calculate_dir_size(&image_cache_dir) {
+    let message_count: i64 = conn_guard
+        .query_row("SELECT COUNT(*) FROM messages", [], |row| row.get(0))
+        .map_err(|e| format!("Failed to count messages: {}", e))?;
+
+    let showcase_count: i64 = conn_guard
+        .query_row("SELECT COUNT(*) FROM showcases", [], |row| row.get(0))
+        .map_err(|e| format!("Failed to count showcases: {}", e))?;
+        
+    let protected_message_count: i64 = conn_guard
+        .query_row("SELECT COUNT(*) FROM messages WHERE is_used = 1", [], |row| row.get(0))
+        .map_err(|e| format!("Failed to count protected messages: {}", e))?;
+
+    let oldest_message_date: Option<i64> = match conn_guard
+        .query_row("SELECT MIN(timestamp) FROM messages", [], |row| row.get(0)) {
+            Ok(timestamp) => timestamp,
+            Err(e) => {
+                warn!("Failed to get oldest message date: {}", e);
+                None
+            }
+        };
+    
+    let newest_message_date: Option<i64> = match conn_guard
+        .query_row("SELECT MAX(timestamp) FROM messages", [], |row| row.get(0)) {
+            Ok(timestamp) => timestamp,
+            Err(e) => {
+                warn!("Failed to get newest message date: {}", e);
+                None
+            }
+        };
+
+
+    let image_base_dir = get_image_base_dir(&app_handle)?;
+    let cache_dir = image_base_dir.join("cached");
+
+    let mut cache_file_count = 0;
+    if cache_dir.exists() {
+        match fs::read_dir(&cache_dir) {
+            Ok(entries) => {
+                for entry_result in entries {
+                    if let Ok(entry) = entry_result {
+                        if entry.path().is_file() {
+                            cache_file_count += 1;
+                        }
+                    }
+                }
+            },
+            Err(e) => error!("Failed to read cache directory: {}", e)
+        }
+    }
+
+    let image_cache_size_bytes = if cache_dir.exists() {
+        match calculate_dir_size(&cache_dir) {
             Ok(size) => size,
             Err(e) => {
-                error!(
-                    "Warning: Failed to calculate image cache directory size: {}",
-                    e
-                );
-                0
+                error!("Failed to calculate cache directory size: {}", e);
+                0 
             }
         }
     } else {
-        info!(
-            "Image cache directory not found at {}",
-            image_cache_dir.display()
-        );
         0
     };
-    info!("Image Cache size: {} bytes", image_cache_size_bytes);
+    
+        let total_size_bytes = database_size_bytes + image_cache_size_bytes;
 
-    let total_size_bytes = database_size_bytes + image_cache_size_bytes;
-    let usage = StorageUsage {
+        info!("Storage usage calculated: {} DB, {} cache, {} total", 
+          format_bytes(database_size_bytes),
+          format_bytes(image_cache_size_bytes),
+          format_bytes(total_size_bytes));
+
+
+    Ok(StorageUsage {
         database_size_bytes,
         image_cache_size_bytes,
         total_size_bytes,
         database_path: db_path.to_string_lossy().to_string(),
-    };
-
-    Ok(usage)
+        message_count,
+        showcase_count,
+        protected_message_count,
+        cache_file_count,
+        oldest_message_date,
+        newest_message_date,
+    })
 }
 
 fn get_image_base_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
@@ -586,4 +660,119 @@ pub async fn get_cached_image_data(
             Err(format!("Failed to read image file: {}", e))
         }
     }
+}
+
+#[tauri::command]
+pub async fn clean_old_data(
+    app_handle: AppHandle,
+    db_state: State<'_, DbConnection>,
+) -> Result<CleanupStats, String> {
+    info!("Starting cleanup of old data (entries > 30 days)...");
+    
+    let thirty_days_ago = chrono::Utc::now()
+        .checked_sub_signed(chrono::Duration::days(30))
+        .expect("Valid timestamp calculation")
+        .timestamp();
+    
+    info!("Cleaning up data older than timestamp: {}", thirty_days_ago);
+    
+    let mut conn_guard = db_state  
+        .0
+        .lock()
+        .map_err(|e| format!("DB lock error: {}", e))?;
+
+    let skipped_count: i64 = conn_guard.query_row(
+        "SELECT COUNT(*) FROM messages WHERE timestamp < ? AND is_used = 1",
+        params![thirty_days_ago],
+        |row| row.get(0)
+    ).map_err(|e| format!("Failed to count skipped messages: {}", e))?;
+    
+    info!("Found {} used messages that will be skipped in cleanup", skipped_count);
+    
+    let (message_ids, attachments_to_delete) = {
+        let mut stmt = conn_guard.prepare(
+            "SELECT message_id, attachments FROM messages WHERE timestamp < ? AND is_used = 0"
+        ).map_err(|e| format!("Failed to prepare old message query: {}", e))?;
+        
+        let mut attachments = Vec::new();
+        let mut ids = Vec::new();
+        
+        let rows = stmt.query_map(params![thirty_days_ago], |row| {
+            let message_id: String = row.get(0)?;
+            let attachments_json: Option<String> = row.get(1)?;
+            
+            if let Some(json_str) = attachments_json {
+                if !json_str.is_empty() && json_str != "null" {
+                    if let Ok(parsed_attachments) = serde_json::from_str::<Vec<String>>(&json_str) {
+                        attachments.extend(parsed_attachments);
+                    }
+                }
+            }
+            
+            ids.push(message_id.clone());
+            Ok(message_id)
+        }).map_err(|e| format!("Error querying old messages: {}", e))?;
+        
+        for result in rows {
+            if let Err(e) = result {
+                warn!("Error processing message row: {}", e);
+            }
+        }
+        
+        (ids, attachments)
+    };
+    
+    let messages_count = message_ids.len();
+    info!("Found {} old AND UNUSED messages to delete", messages_count);
+    
+    if !message_ids.is_empty() {
+        let tx = conn_guard.transaction()
+            .map_err(|e| format!("Failed to start transaction: {}", e))?;
+        
+        let placeholders = vec!["?"; message_ids.len()].join(",");
+        let delete_sql = format!("DELETE FROM messages WHERE message_id IN ({})", placeholders);
+        
+        let params: Vec<&dyn rusqlite::ToSql> = message_ids
+            .iter()
+            .map(|id| id as &dyn rusqlite::ToSql)
+            .collect();
+        
+        tx.execute(&delete_sql, &params[..])
+            .map_err(|e| format!("Failed to delete old messages: {}", e))?;
+            
+        // Commit the transaction
+        tx.commit()
+            .map_err(|e| format!("Failed to commit cleanup transaction: {}", e))?;
+            
+        info!("Deleted {} old messages from database", messages_count);
+    }
+    
+    let mut files_deleted = 0;
+    let cached_dir = get_image_base_dir(&app_handle)?.join("cached");
+    
+    if cached_dir.exists() {
+        for attachment_path in &attachments_to_delete {
+            let file_path = cached_dir.join(attachment_path);
+            if file_path.exists() {
+                match fs::remove_file(&file_path) {
+                    Ok(_) => {
+                        files_deleted += 1;
+                        info!("Deleted cached file: {}", file_path.display());
+                    },
+                    Err(e) => {
+                        warn!("Failed to delete cached file {}: {}", file_path.display(), e);
+                    }
+                }
+            }
+        }
+    }
+    
+    info!("Cleanup completed: removed {} messages and {} cached files. Skipped {} used messages.", 
+          messages_count, files_deleted, skipped_count);
+    
+    Ok(CleanupStats {
+        messages_deleted: messages_count,
+        files_deleted,
+        skipped_used_messages: skipped_count as usize,
+    })
 }

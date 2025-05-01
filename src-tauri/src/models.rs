@@ -97,6 +97,7 @@ pub struct IndexedMessage {
     pub message_content: String,
     pub attachments: Vec<String>,
     pub timestamp: i64,
+    pub is_used: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -105,4 +106,17 @@ pub struct StorageUsage {
     pub image_cache_size_bytes: u64,
     pub total_size_bytes: u64,
     pub database_path: String,
+    pub message_count: i64,
+    pub showcase_count: i64,
+    pub protected_message_count: i64,  
+    pub cache_file_count: u64,
+    pub oldest_message_date: Option<i64>, 
+    pub newest_message_date: Option<i64>,  
+}
+
+#[derive(Debug, Serialize)]
+pub struct CleanupStats {
+    pub messages_deleted: usize,
+    pub files_deleted: usize,
+    pub skipped_used_messages: usize,
 }

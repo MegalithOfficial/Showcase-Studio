@@ -175,7 +175,7 @@ pub async fn save_selected_messages(
     db_state: State<'_, DbConnection>,
 ) -> Result<(), String> {
     info!("Saving selected messages for showcase ID: {}", id);
-    let conn_guard = db_state
+    let mut conn_guard = db_state  
         .0
         .lock()
         .map_err(|e| format!("DB lock error: {}", e))?;
@@ -186,23 +186,32 @@ pub async fn save_selected_messages(
     let current_ts = Utc::now().timestamp();
     let next_phase = 2;
 
-    let rows = conn_guard.execute(
+    let tx = conn_guard
+        .transaction()
+        .map_err(|e| format!("Failed to start transaction: {}", e))?;
+
+    tx.execute(
         "UPDATE showcases SET selected_messages_json = ?1, phase = ?2, last_modified = ?3 WHERE id = ?4",
-        params![json_data, next_phase, current_ts, &id]
+        params![&json_data, next_phase, current_ts, &id]
     ).map_err(|e| format!("DB error saving selected messages: {}", e))?;
 
-    if rows == 0 {
-        Err(format!(
-            "Showcase ID '{}' not found for saving selected messages.",
-            id
-        ))
-    } else {
-        info!(
-            "Selected messages saved and phase updated to {} for showcase ID: {}",
-            next_phase, id
-        );
-        Ok(())
+    for message in &selected_messages {
+        tx.execute(
+            "UPDATE messages SET is_used = 1 WHERE message_id = ?1",
+            params![&message.message_id]
+        ).map_err(|e| format!("Failed to mark message {} as used: {}", message.message_id, e))?;
+        
+        info!("Marked message {} as used", message.message_id);
     }
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit transaction: {}", e))?;
+
+    info!(
+        "Selected messages saved and phase updated to {} for showcase ID: {}",
+        next_phase, id
+    );
+    Ok(())
 }
 
 #[tauri::command]

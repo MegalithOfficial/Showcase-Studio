@@ -21,7 +21,7 @@ use showcase_manager::{
     update_showcase, update_showcase_phase, upload_showcase_image, check_showcase_pptx_exists, get_showcase_images,
 };
 use sqlite_manager::{
-    get_cached_image_data, get_indexed_messages, get_storage_usage, retrieve_config, DbConnection,
+    get_cached_image_data, get_indexed_messages, get_storage_usage, retrieve_config, DbConnection, clean_old_data,
 };
 
 pub const KEYRING_SERVICE_NAME: &str = "com.megalith.showcase_app";
@@ -297,7 +297,8 @@ pub fn run() {
             check_showcase_pptx_exists,
             // Database/Other Commands (sqlite_manager.rs)
             get_indexed_messages,
-            get_cached_image_data
+            get_cached_image_data,
+            clean_old_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

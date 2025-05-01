@@ -31,7 +31,7 @@ const calcPercent = (valueBytes: number, totalBytes: number): string => {
 };
 
 export const DataStorageSection: React.FC = () => {
-   const [isLoading, setIsLoading] = useState(true); 
+   const [isLoading, setIsLoading] = useState(true);
    const [isClearingCache, setIsClearingCache] = useState(false);
    const [isCleaningData, setIsCleaningData] = useState(false);
    const [isResetting, setIsResetting] = useState(false);
@@ -41,7 +41,7 @@ export const DataStorageSection: React.FC = () => {
    const [copiedPath, setCopiedPath] = useState(false);
    const [showResetConfirm, setShowResetConfirm] = useState(false);
    const [operationStatus, setOperationStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
-   const [refreshTrigger, setRefreshTrigger] = useState(0); 
+   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
    const fetchData = useCallback(async () => {
       setIsLoading(true);
@@ -56,11 +56,11 @@ export const DataStorageSection: React.FC = () => {
       } finally {
          setIsLoading(false);
       }
-   }, []); 
+   }, []);
 
    useEffect(() => {
       fetchData();
-   }, [fetchData, refreshTrigger]); 
+   }, [fetchData, refreshTrigger]);
 
    const handleCopy = () => {
       if (!storageInfo?.database_path) return;
@@ -92,9 +92,18 @@ export const DataStorageSection: React.FC = () => {
       setIsCleaningData(true);
       setOperationStatus(null);
       try {
-         Logger.info("Simulating invoke: clean_old_data");
-         await invoke("clean_old_data");
-         setOperationStatus({ type: 'success', message: 'Old data removed successfully.' });
+         const stats = await invoke<{
+            messages_deleted: number,
+            files_deleted: number,
+            skipped_used_messages: number
+         }>("clean_old_data");
+
+         setOperationStatus({
+            type: 'success',
+            message: `Removed ${stats.messages_deleted} messages and ${stats.files_deleted} cached files. 
+                  ${stats.skipped_used_messages} messages were preserved because they're used in showcases.`
+         });
+
          setRefreshTrigger(prev => prev + 1);
          setTimeout(() => setOperationStatus(null), 5000);
       } catch (error) {
@@ -121,7 +130,7 @@ export const DataStorageSection: React.FC = () => {
          setOperationStatus({ type: 'error', message: 'Failed to reset application data.' });
       } finally {
          setIsResetting(false);
-         setShowResetConfirm(false); 
+         setShowResetConfirm(false);
       }
    };
 
@@ -277,10 +286,11 @@ export const DataStorageSection: React.FC = () => {
                   onClick={handleCleanOldData}
                   disabled={isClearingCache || isCleaningData || isResetting}
                   className={`${buttonBaseClass} ${indigoButtonClass}`}
+                  title="Remove messages older than 30 days while preserving those used in showcases"
                >
                   <div className="flex-shrink-0 h-5 w-5 flex items-center justify-center">
                      {isCleaningData ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-                  </div> 
+                  </div>
                   <div className="flex-grow text-left">Clean-up Old Data</div>
                   <span className="text-xs text-indigo-400/70">Entries <ArrowRight className="h-3 w-3 inline-block" /> 30 days</span>
                </button>
