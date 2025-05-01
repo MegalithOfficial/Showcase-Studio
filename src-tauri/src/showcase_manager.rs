@@ -1,6 +1,6 @@
 use crate::models::{SelectedMessage, Showcase, ShowcaseImage, UpdateShowcasePayload};
 use crate::sqlite_manager::DbConnection;
-use crate::{log_info as info, log_warn as warn, log_error as error};
+use crate::{log_error as error, log_info as info, log_warn as warn};
 
 use base64::{engine::general_purpose::STANDARD as base64_engine, Engine as _};
 use chrono::Utc;
@@ -175,7 +175,7 @@ pub async fn save_selected_messages(
     db_state: State<'_, DbConnection>,
 ) -> Result<(), String> {
     info!("Saving selected messages for showcase ID: {}", id);
-    let mut conn_guard = db_state  
+    let mut conn_guard = db_state
         .0
         .lock()
         .map_err(|e| format!("DB lock error: {}", e))?;
@@ -198,9 +198,15 @@ pub async fn save_selected_messages(
     for message in &selected_messages {
         tx.execute(
             "UPDATE messages SET is_used = 1 WHERE message_id = ?1",
-            params![&message.message_id]
-        ).map_err(|e| format!("Failed to mark message {} as used: {}", message.message_id, e))?;
-        
+            params![&message.message_id],
+        )
+        .map_err(|e| {
+            format!(
+                "Failed to mark message {} as used: {}",
+                message.message_id, e
+            )
+        })?;
+
         info!("Marked message {} as used", message.message_id);
     }
 

@@ -838,32 +838,55 @@ pub async fn delete_all_application_data(
 ) -> Result<(), String> {
     info!("Starting full application data deletion...");
 
-    let mut conn_guard = db_state
-        .0
-        .lock()
-        .map_err(|e| format!("DB lock error: {}", e))?;
+    let db_path = get_db_path(&app_handle)?;
+    info!("Database path to delete: {}", db_path.display());
 
-    let tx = conn_guard
-        .transaction()
-        .map_err(|e| format!("Failed to start transaction: {}", e))?;
-
-    info!("Deleting all data from database tables...");
-    for table in &["messages", "showcases", "config"] {
-        tx.execute(&format!("DELETE FROM {}", table), [])
-            .map_err(|e| format!("Failed to clear {} table: {}", table, e))?;
+    {
+        let mut conn_guard = db_state
+            .0
+            .lock()
+            .map_err(|e| format!("DB lock error: {}", e))?;
+        
+        let _ = conn_guard.execute("PRAGMA wal_checkpoint(FULL);", []);
+        
+        use std::mem;
+        let old_conn = mem::replace(&mut *conn_guard, Connection::open_in_memory().unwrap());
+        drop(old_conn);
+        
+        info!("Database connection closed properly");
     }
 
-    tx.execute("DELETE FROM schema_version", [])
-        .map_err(|e| format!("Failed to clear schema_version table: {}", e))?;
+    std::thread::sleep(std::time::Duration::from_millis(100));
 
-    tx.execute(
-        "INSERT INTO schema_version (version) VALUES (?1)",
-        [CURRENT_SCHEMA_VERSION],
-    )
-    .map_err(|e| format!("Failed to reset schema version: {}", e))?;
+    if db_path.exists() {
+        match fs::remove_file(&db_path) {
+            Ok(_) => info!("Successfully deleted database file"),
+            Err(e) => {
+                warn!("Failed to delete database file: {}", e);
+                if cfg!(windows) {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    match fs::remove_file(&db_path) {
+                        Ok(_) => info!("Successfully deleted database file on second attempt"),
+                        Err(e) => warn!("Failed to delete database file on second attempt: {}", e),
+                    }
+                }
+            }
+        }
+    }
 
-    tx.commit()
-        .map_err(|e| format!("Failed to commit database clearing transaction: {}", e))?;
+    let wal_path = db_path.with_extension("db-wal");
+    if wal_path.exists() {
+        if let Err(e) = fs::remove_file(&wal_path) {
+            warn!("Failed to delete WAL file: {}", e);
+        }
+    }
+
+    let shm_path = db_path.with_extension("db-shm");
+    if shm_path.exists() {
+        if let Err(e) = fs::remove_file(&shm_path) {
+            warn!("Failed to delete SHM file: {}", e);
+        }
+    }
 
     let image_dir = get_image_base_dir(&app_handle)?;
     info!("Deleting all images from {}", image_dir.display());
@@ -899,7 +922,6 @@ pub async fn delete_all_application_data(
         }
     }
 
-    // Delete OpenRouter key
     let openrouter_key_entry = Entry::new(SERVICE_NAME, "openRouterApiKey")
         .map_err(|e| format!("Failed to create keyring entry for OpenRouter key: {}", e))?;
 
@@ -911,7 +933,5 @@ pub async fn delete_all_application_data(
     }
 
     info!("Application data deletion completed successfully.");
-
-    // Return success
     Ok(())
 }

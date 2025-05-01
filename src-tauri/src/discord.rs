@@ -17,8 +17,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::time::sleep;
 
 use crate::sqlite_manager::{retrieve_config, DbConnection};
+use crate::{log_error as error, log_info as info, log_warn as warn};
 use crate::{AppConfig, KEYRING_SERVICE_NAME};
-use crate::{log_info as info, log_warn as warn, log_error as error};
 
 use chrono::{DateTime, Datelike, Months, NaiveDate, TimeZone, Utc};
 use reqwest;
@@ -548,7 +548,7 @@ pub async fn start_initial_indexing(
                                      }
                                  } 
                                  tx.commit().map_err(|e| format!("Commit Tx: {}", e)) 
-                             }).await; 
+                             }).await;
 
                             // Handle insert result
                             match insert_result {
@@ -580,7 +580,7 @@ pub async fn start_initial_indexing(
                             info!("Reached messages older than threshold in channel {}. Stopping fetch.", channel_id);
                             break 'message_loop;
                         }
-                    } 
+                    }
                     Err(e) => {
                         error!("Error fetching message batch for {}: {:?}", channel_id, e);
                         app_clone

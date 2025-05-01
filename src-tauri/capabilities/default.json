@@ -10,13 +10,14 @@
     "store:default",
     "shell:default",
     "opener:allow-reveal-item-in-dir",
-     {
+    {
       "identifier": "opener:allow-open-path",
       "allow": [
         {
           "path": "$APPDATA/com.megalith.showcase_app/presentations/*"
         }
       ]
-    }
+    },
+    "process:default"
   ]
 }

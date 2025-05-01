@@ -24,7 +24,7 @@ pub struct OverlaySettings {
     #[serde(rename = "showAvatar")]
     pub show_avatar: bool,
     pub width: f32,
-    pub transparency: u8, // 0-100 
+    pub transparency: u8, // 0-100
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -60,7 +60,7 @@ pub struct Showcase {
     pub phase: i32,
     pub selected_messages: Option<Vec<SelectedMessage>>,
     pub images: Option<Vec<ShowcaseImage>>,
-    pub pptx_path: Option<String>, 
+    pub pptx_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,10 +108,10 @@ pub struct StorageUsage {
     pub database_path: String,
     pub message_count: i64,
     pub showcase_count: i64,
-    pub protected_message_count: i64,  
+    pub protected_message_count: i64,
     pub cache_file_count: u64,
-    pub oldest_message_date: Option<i64>, 
-    pub newest_message_date: Option<i64>,  
+    pub oldest_message_date: Option<i64>,
+    pub newest_message_date: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]

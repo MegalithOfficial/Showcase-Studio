@@ -1,30 +1,32 @@
 use keyring::Entry;
 use rusqlite::params;
+use serde_json;
 use std::{
     fs,
     sync::{Arc, Mutex},
 };
 use tauri::State;
-use serde_json;
 
 mod discord;
+mod logging;
 mod models;
 mod showcase_manager;
 mod sqlite_manager;
-mod logging;
 
-use log::{info, error};
 use discord::{fetch_discord_guilds, get_discord_channels, start_initial_indexing};
+use log::{error, info};
 use showcase_manager::{
-    create_showcase, delete_showcase, get_selected_messages, get_showcase, list_showcases,
-    open_showcase_pptx, save_selected_messages, save_showcase_pptx, sort_showcase_images,
-    update_showcase, update_showcase_phase, upload_showcase_image, check_showcase_pptx_exists, get_showcase_images,
+    check_showcase_pptx_exists, create_showcase, delete_showcase, get_selected_messages,
+    get_showcase, get_showcase_images, list_showcases, open_showcase_pptx, save_selected_messages,
+    save_showcase_pptx, sort_showcase_images, update_showcase, update_showcase_phase,
+    upload_showcase_image,
 };
 use sqlite_manager::{
-    get_cached_image_data, get_indexed_messages, get_storage_usage, retrieve_config, DbConnection, clean_old_data,
+    clean_old_data, delete_all_application_data, get_cached_image_data, get_indexed_messages,
+    get_storage_usage, retrieve_config, DbConnection,
 };
 
-pub const KEYRING_SERVICE_NAME: &str = "com.megalith.showcase_app";
+pub const KEYRING_SERVICE_NAME: &str = "com.megalith.showcase-app";
 
 #[tauri::command]
 async fn save_secret(key_name: String, secret: String) -> Result<(), String> {
@@ -206,6 +208,7 @@ async fn is_setup_complete(db_state: State<'_, DbConnection>) -> Result<bool, St
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
@@ -298,7 +301,8 @@ pub fn run() {
             // Database/Other Commands (sqlite_manager.rs)
             get_indexed_messages,
             get_cached_image_data,
-            clean_old_data
+            clean_old_data,
+            delete_all_application_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

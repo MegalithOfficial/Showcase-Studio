@@ -27,23 +27,22 @@ macro_rules! function_path {
 
         let name = type_name_of(&f);
         let parts: Vec<&str> = name.split("::").collect();
-        
+
         if parts.len() > 2 {
             let mut fn_name = parts[parts.len() - 2];
-            
+
             if fn_name.contains("{{closure}}") {
                 if parts.len() > 3 {
                     fn_name = parts[parts.len() - 3];
                 }
             }
-            
+
             fn_name
         } else {
             "unknown"
         }
     }};
 }
-
 
 #[macro_export]
 macro_rules! log_info {
@@ -87,7 +86,7 @@ impl log::Log for CustomLogger {
                 Level::Debug => "\x1B[34m", // Blue
                 Level::Trace => "\x1B[36m", // Cyan
             };
-            
+
             let reset = "\x1B[0m";
             let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
             let console_msg = format!(
@@ -99,9 +98,9 @@ impl log::Log for CustomLogger {
                 record.target(),
                 record.args()
             );
-            
+
             println!("{}", console_msg);
-            
+
             if let Ok(mut logger) = FILE_LOGGER.lock() {
                 if let Some(file_logger) = logger.as_mut() {
                     let file_msg = format!(
@@ -111,7 +110,7 @@ impl log::Log for CustomLogger {
                         record.target(),
                         record.args()
                     );
-                    
+
                     if let Err(e) = file_logger.file.write_all(file_msg.as_bytes()) {
                         eprintln!("Failed to write to log file: {}", e);
                     }
@@ -134,13 +133,13 @@ impl log::Log for CustomLogger {
 impl FileLogger {
     fn new(log_dir: &Path) -> io::Result<Self> {
         fs::create_dir_all(log_dir)?;
-        
+
         let today = Local::now();
         let date_str = today.format("%Y-%m-%d").to_string();
-        
+
         let mut count = 1;
         let mut log_path;
-        
+
         loop {
             log_path = log_dir.join(format!("{}_{}.log", date_str, count));
             if !log_path.exists() {
@@ -148,16 +147,16 @@ impl FileLogger {
             }
             count += 1;
         }
-        
+
         let file = OpenOptions::new()
             .create(true)
             .write(true)
             .append(true)
             .open(&log_path)?;
-        
+
         Ok(FileLogger { file, log_path })
     }
-    
+
     fn log_path(&self) -> &PathBuf {
         &self.log_path
     }
@@ -168,27 +167,27 @@ pub fn init_logging(app_handle: &AppHandle) -> Result<PathBuf, String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
-    
+
     let logs_dir = app_data_dir.join("logs");
-    
-    let file_logger = FileLogger::new(&logs_dir)
-        .map_err(|e| format!("Failed to create log file: {}", e))?;
-    
+
+    let file_logger =
+        FileLogger::new(&logs_dir).map_err(|e| format!("Failed to create log file: {}", e))?;
+
     let log_path = file_logger.log_path().clone();
-    
+
     if let Ok(mut logger_guard) = FILE_LOGGER.lock() {
         *logger_guard = Some(file_logger);
     } else {
         return Err("Failed to initialize file logger".to_string());
     }
-    
+
     static LOGGER: CustomLogger = CustomLogger;
     log::set_logger(&LOGGER)
         .map(|()| log::set_max_level(LevelFilter::Info))
         .map_err(|e| format!("Failed to set logger: {}", e))?;
-    
+
     log_info!("Logging system initialized");
     log_info!("Log file: {}", log_path.display());
-    
+
     Ok(log_path)
 }
