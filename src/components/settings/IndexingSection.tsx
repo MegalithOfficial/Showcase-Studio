@@ -96,7 +96,7 @@ export const IndexingSection: React.FC = () => {
 
          setChannelData(enhancedChannels);
       } catch (error) {
-         Logger.error('Failed to fetch data:', error);
+         Logger.error('Failed to fetch data (fetchChannels):', error);
          toast.error("Failed to load channel data.");
          setChannelData([]);
       } finally {
@@ -149,7 +149,6 @@ export const IndexingSection: React.FC = () => {
          toast.dismiss("indexing");
       };
    }, []);
-
 
    const handleToggleChannelIndexing = async (channelId: string) => {
       const originalChannelData = [...channelData];

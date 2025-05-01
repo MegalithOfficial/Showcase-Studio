@@ -4,6 +4,7 @@ import {
    AlertTriangle, Settings, Loader2, Clock, X, ArrowRight
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { relaunch } from '@tauri-apps/plugin-process';
 import { StorageUsage } from '../../utils/types';
 import Logger from '../../utils/log';
 
@@ -120,11 +121,17 @@ export const DataStorageSection: React.FC = () => {
       setIsResetting(true);
       setOperationStatus(null);
       try {
-         Logger.info("Simulating invoke: reset_application_data");
-         await invoke("reset_application_data");
+         Logger.info("Reseting Application...");
+         await invoke('delete_all_application_data');
          setOperationStatus({ type: 'success', message: 'Application data reset successfully.' });
          setRefreshTrigger(prev => prev + 1);
-         setTimeout(() => setOperationStatus(null), 7000);
+         setTimeout(async () => {
+            try {
+               await relaunch();
+            } catch (error) {
+               Logger.error("Failed to restart application:", error);
+            }
+         }, 2000);
       } catch (error) {
          Logger.error("Reset failed:", error);
          setOperationStatus({ type: 'error', message: 'Failed to reset application data.' });
