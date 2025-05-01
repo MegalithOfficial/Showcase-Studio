@@ -18,7 +18,7 @@ use tokio::time::sleep;
 
 use crate::sqlite_manager::{retrieve_config, DbConnection};
 use crate::{AppConfig, KEYRING_SERVICE_NAME};
-use crate::logging::{info, error, warn};
+use crate::{log_info as info, log_warn as warn, log_error as error};
 
 use chrono::{DateTime, Datelike, Months, NaiveDate, TimeZone, Utc};
 use reqwest;

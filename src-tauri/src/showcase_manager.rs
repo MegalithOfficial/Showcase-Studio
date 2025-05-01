@@ -1,6 +1,6 @@
 use crate::models::{SelectedMessage, Showcase, ShowcaseImage, UpdateShowcasePayload};
 use crate::sqlite_manager::DbConnection;
-use crate::logging::{info, error, warn};
+use crate::{log_info as info, log_warn as warn, log_error as error};
 
 use base64::{engine::general_purpose::STANDARD as base64_engine, Engine as _};
 use chrono::Utc;

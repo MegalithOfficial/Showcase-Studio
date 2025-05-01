@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::{AppHandle, Manager, State};
 
 use crate::models::{IndexedMessage, StorageUsage, CleanupStats};
-use crate::logging::{info, error, warn};
+use crate::{log_info as info, log_warn as warn, log_error as error};
 use crate::AppConfig;
 
 use base64::{engine::general_purpose::STANDARD as base64_engine, Engine as _};
