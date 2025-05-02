@@ -38,8 +38,6 @@ const MainAppPage: React.FC = () => {
         setSortDirection(direction);
     }, []);
 
-
-
     const handleNewShowcaseClick = () => {
         setIsNewShowcaseModalOpen(true);
     };
@@ -96,7 +94,6 @@ const MainAppPage: React.FC = () => {
     return (
         <div className="flex h-screen text-white overflow-hidden">
             <Sidebar />
-
             {/* Main content area */}
             <main className="flex-1 flex flex-col overflow-y-auto">
                 <div className="p-6 md:p-8 lg:p-10 flex-grow flex flex-col">

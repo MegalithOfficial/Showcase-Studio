@@ -18,7 +18,7 @@ import WelcomeModal from '../components/image-editor/components/WelcomeModal';
 import { captureScreenshot } from '../utils/screenshot';
 import { EditableImage, ShowcaseImage } from '../utils/types';
 import Logger from '../utils/log';
-import toast from 'react-hot-toast';
+import { ErrorToast } from '../components/layout/Toasts';
 
 const EditImages = () => {
    const navigate = useNavigate();
@@ -148,7 +148,7 @@ const EditImages = () => {
          });
 
       } catch (err) {
-         toast.error(`Error: ${err}`);
+         ErrorToast(`Error: ${err}`);
          Logger.error("Failed to save changes:", err);
       } finally {
          setIsSaving(false);

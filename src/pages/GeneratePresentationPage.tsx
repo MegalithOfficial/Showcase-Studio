@@ -6,8 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import pptxgen from 'pptxgenjs';
 import { AlertTriangle, ChevronLeft, Presentation, Check, FileCheck } from 'lucide-react';
 import { Showcase } from '../utils/types';
-import toast from 'react-hot-toast';
 import Logger from '../utils/log';
+import { ErrorToast, SuccessToast } from './ToastTestPage';
 
 const GeneratePresentationPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -117,11 +117,11 @@ const GeneratePresentationPage: React.FC = () => {
       });
 
       setPptxPath(savePath);
-      toast.success('Presentation generated successfully!');
+      SuccessToast('Presentation generated successfully!');
     } catch (error) {
       Logger.error('Error generating presentation:', error);
       setError(`Failed to generate presentation: ${error instanceof Error ? error.message : String(error)}`);
-      toast.error('Failed to generate presentation');
+      ErrorToast('Failed to generate presentation');
     } finally {
       setIsGenerating(false);
       setIsLoading(false);
@@ -134,11 +134,11 @@ const GeneratePresentationPage: React.FC = () => {
     try {
       const path = await invoke<string>('open_showcase_pptx', { id: showcaseId });
       await revealItemInDir(path);
-      toast.success('Opening presentation file...');
+      SuccessToast('Opening presentation file...');
     } catch (error) {
       Logger.error('Error opening presentation:', error);
       setError(`Failed to open presentation: ${error instanceof Error ? error.message : String(error)}`);
-      toast.error('Failed to open presentation file');
+      ErrorToast('Failed to open presentation file');
     }
   };
 

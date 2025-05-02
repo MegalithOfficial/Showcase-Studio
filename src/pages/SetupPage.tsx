@@ -14,10 +14,10 @@ import {
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import toast from 'react-hot-toast';
 
 import { HeadlessFloatingSelect, SelectOption } from '../components/ui/CustomSelect';
 import Logger from '../utils/log';
+import { ErrorToast } from './ToastTestPage';
 
 interface SerializableGuild {
    id: string;
@@ -83,13 +83,13 @@ const SetupPage: React.FC = () => {
                const fetchedServers = await invoke<SerializableGuild[]>('fetch_discord_guilds');
 
                if (fetchedServers.length === 0) {
-                  toast.error("No Discord servers found. Make sure your bot has been added to at least one server.");
+                  ErrorToast("No Discord servers found. Make sure your bot has been added to at least one server.");
                }
 
                setServers(fetchedServers);
             } catch (err) {
                Logger.error("Failed to fetch servers:", err);
-               toast.error(`Failed to load servers: ${err instanceof Error ? err.message : String(err)}`);
+               ErrorToast(`Failed to load servers: ${err instanceof Error ? err.message : String(err)}`);
                setCurrentStep(1);
             } finally {
                setIsLoadingServers(false);
@@ -109,13 +109,13 @@ const SetupPage: React.FC = () => {
          const fetchedChannels = await invoke<DiscordChannel[]>('get_discord_channels', { guildIdStr: serverId });
 
          if (fetchedChannels.length === 0) {
-            toast.error("No text channels found in this server.");
+            ErrorToast("No text channels found in this server.");
          }
 
          setChannels(fetchedChannels);
       } catch (err) {
          Logger.error("Failed to fetch channels:", err);
-         toast.error(`Failed to load channels: ${err instanceof Error ? err.message : String(err)}`);
+         ErrorToast(`Failed to load channels: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
          setIsLoadingChannels(false);
       }
@@ -154,7 +154,7 @@ const SetupPage: React.FC = () => {
 
                unlistenError = await listen<string>('indexing-error', (event) => {
                   Logger.error("Indexing error:", event.payload);
-                  toast.error(event.payload);
+                  ErrorToast(event.payload);
                   setIndexingStatus("An error occurred during indexing.");
                });
 
@@ -166,7 +166,7 @@ const SetupPage: React.FC = () => {
             } catch (err) {
                Logger.error("Failed to invoke start_initial_indexing:", err);
                const errorMsg = err instanceof Error ? err.message : String(err);
-               toast.error(`Failed to start indexing process: ${errorMsg}`);
+               ErrorToast(`Failed to start indexing process: ${errorMsg}`);
                setIndexingStatus("Failed to start indexing.");
                unlistenStatus?.();
                unlistenProgress?.();
@@ -192,7 +192,7 @@ const SetupPage: React.FC = () => {
       event.preventDefault();
       
       if (!discordToken) {
-         toast.error('Discord Bot Token is required.');
+         ErrorToast('Discord Bot Token is required.');
          return;
       }
       
@@ -213,7 +213,7 @@ const SetupPage: React.FC = () => {
          setCurrentStep(2);
       } catch (err) {
          Logger.error("Failed to save configuration:", err);
-         toast.error(`Failed to save configuration: ${err instanceof Error ? err.message : String(err)}`);
+         ErrorToast(`Failed to save configuration: ${err instanceof Error ? err.message : String(err)}`);
          setIsSaving(false);
       }
    };
@@ -262,13 +262,13 @@ const SetupPage: React.FC = () => {
       setIsFinishing(true);
       
       if (!selectedServer) {
-         toast.error("Please select a server.");
+         ErrorToast("Please select a server.");
          setIsFinishing(false);
          return;
       }
       
       if (selectedChannels.length === 0) {
-         toast.error("Please select at least one channel.");
+         ErrorToast("Please select at least one channel.");
          setIsFinishing(false);
          return;
       }
@@ -289,7 +289,7 @@ const SetupPage: React.FC = () => {
          setCurrentStep(3);
       } catch (err) {
          Logger.error("Failed to save configuration:", err);
-         toast.error(`Failed to save settings: ${err instanceof Error ? err.message : String(err)}`);
+         ErrorToast(`Failed to save settings: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
          setIsFinishing(false);
       }
