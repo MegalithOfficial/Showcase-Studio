@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Info, Github, ExternalLink, Laptop, Copy, Check, Clapperboard, AlertCircle, Download, RefreshCw, Clock, ArrowRight } from 'lucide-react';
-import { checkForUpdates, getCurrentVersion, getUpdateGithubLink, getVersionInfo, type VersionInfo } from '../../utils/versionCheck';
+import { checkForUpdates, getCurrentVersion, getUpdateGithubLink, type VersionInfo } from '../../utils/versionCheck';
 
 export const AboutSection: React.FC = () => {
    const [copiedInfo, setCopiedInfo] = useState<string | null>(null);
