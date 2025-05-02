@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { LucideIcon, ArrowLeft, Settings } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { getBranchBadgeStyles, getCurrentVersion, VersionInfo } from "../../utils/versionCheck";
 
 interface SettingsSection {
    id: string;
@@ -14,9 +15,28 @@ const SettingsSidebar: React.FC<{ settingsSections: SettingsSection[] }> = ({ se
    const navigate = useNavigate();
    const location = useLocation();
 
+   const [currentVersion, setCurrentVersion] = useState<string>("");
+   const [versionBranch, setVersionBranch] = useState<VersionInfo["branch"]>("Unknown");
+
    const handleGoHome = () => {
       navigate('/');
-   }
+   };
+
+   useEffect(() => {
+      const fetchVersionInfo = async () => {
+         try {
+            const info = await getCurrentVersion();
+            setCurrentVersion(info.version);
+            setVersionBranch(info.branch as VersionInfo["branch"]);
+         } catch (error) {
+            console.error("Failed to get version info:", error);
+         }
+      };
+
+      fetchVersionInfo();
+   }, []);
+
+   const badgeStyles = getBranchBadgeStyles(versionBranch);
 
    return (
       <div className="w-64 flex-shrink-0 flex flex-col h-full border-r border-slate-800 bg-black shadow-md">
@@ -34,7 +54,7 @@ const SettingsSidebar: React.FC<{ settingsSections: SettingsSection[] }> = ({ se
             >
                Settings
             </motion.h1>
-            
+
          </div>
 
          {/* Navigation Items */}
@@ -90,8 +110,10 @@ const SettingsSidebar: React.FC<{ settingsSections: SettingsSection[] }> = ({ se
             </button>
 
             <div className="mt-3 px-3 flex items-center justify-between">
-               <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded-full">Beta</span>
-               <span className="text-xs text-slate-500">v0.1.2</span>
+               <span className={`text-xs px-2 py-0.5 rounded-full transition-colors ${badgeStyles}`}>
+                  {versionBranch}
+               </span>
+               <span className="text-xs text-slate-500">v{currentVersion}</span>
             </div>
          </div>
       </div>

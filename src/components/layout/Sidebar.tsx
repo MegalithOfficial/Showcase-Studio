@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Clapperboard, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getBranchBadgeStyles, getCurrentVersion, VersionInfo } from '../../utils/versionCheck';
 
 const Sidebar: React.FC = () => {
    const [isCollapsed, setIsCollapsed] = useState(false);
+   const [currentVersion, setCurrentVersion] = useState<string>("");
+   const [versionBranch, setVersionBranch] = useState<VersionInfo["branch"]>("Unknown");
 
    const toggleCollapse = () => {
       setIsCollapsed(!isCollapsed);
@@ -15,6 +18,22 @@ const Sidebar: React.FC = () => {
          ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
          : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
       }`;
+
+   useEffect(() => {
+      const fetchVersionInfo = async () => {
+         try {
+            const info = await getCurrentVersion();
+            setCurrentVersion(info.version);
+            setVersionBranch(info.branch as VersionInfo["branch"]);
+         } catch (error) {
+            console.error("Failed to get version info:", error);
+         }
+      };
+
+      fetchVersionInfo();
+   }, []);
+
+   const badgeStyles = getBranchBadgeStyles(versionBranch);
 
    return (
       <motion.aside
@@ -111,8 +130,10 @@ const Sidebar: React.FC = () => {
                            transition={{ duration: 0.2 }}
                            className="flex items-center gap-2"
                         >
-                           <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded-full">Beta</span>
-                           <span className="text-xs text-slate-500">v0.1.2</span>
+                           <span className={`text-xs px-2 py-0.5 rounded-full transition-colors ${badgeStyles}`}>
+                              {versionBranch}
+                           </span>
+                           <span className="text-xs text-slate-500">v{currentVersion}</span>
                         </motion.div>
                      )}
                   </AnimatePresence>

@@ -12,8 +12,11 @@ mod logging;
 mod models;
 mod showcase_manager;
 mod sqlite_manager;
+mod version_manager;
 
-use discord::{fetch_discord_guilds, get_discord_channels, start_initial_indexing};
+use discord::{
+    fetch_discord_guilds, get_discord_channels, start_initial_indexing
+};
 use log::{error, info};
 use showcase_manager::{
     check_showcase_pptx_exists, create_showcase, delete_showcase, get_selected_messages,
@@ -24,6 +27,10 @@ use showcase_manager::{
 use sqlite_manager::{
     clean_old_data, delete_all_application_data, get_cached_image_data, get_indexed_messages,
     get_storage_usage, retrieve_config, DbConnection,
+};
+
+use version_manager::{
+    check_for_updates, get_version_info, get_current_version, get_update_github_link
 };
 
 pub const KEYRING_SERVICE_NAME: &str = "com.megalith.showcase-app";
@@ -302,8 +309,14 @@ pub fn run() {
             get_indexed_messages,
             get_cached_image_data,
             clean_old_data,
-            delete_all_application_data
+            delete_all_application_data,
+            // Version Commands (version_manager.rs)
+            check_for_updates, 
+            get_version_info,
+            get_current_version,
+            get_update_github_link
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
