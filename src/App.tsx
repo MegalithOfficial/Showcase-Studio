@@ -18,7 +18,6 @@ import { ApiTokensSection } from './components/settings/ApiTokensSection';
 import { SettingsLayout } from './components/settings/SettingsLayout';
 
 import Logger from './utils/log';
-import ToastTestPage from './pages/ToastTestPage';
 
 const LoadingScreen: React.FC = () => (
   <div className="flex items-center justify-center min-h-screen bg-black">
@@ -84,7 +83,6 @@ const App: React.FC = () => {
           <Route path="/sort_images" element={<SortImagesPage />} />
           <Route path="/generate" element={<GeneratePresentationPage />} />
           <Route path="/preview" element={<ShowcasePreviewPage />} />
-          <Route path="/test" element={<ToastTestPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       ) : (

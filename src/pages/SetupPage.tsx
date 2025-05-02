@@ -17,7 +17,7 @@ import { listen } from '@tauri-apps/api/event';
 
 import { HeadlessFloatingSelect, SelectOption } from '../components/ui/CustomSelect';
 import Logger from '../utils/log';
-import { ErrorToast } from './ToastTestPage';
+import { ErrorToast, SuccessToast } from '../components/layout/Toasts';
 
 interface SerializableGuild {
    id: string;

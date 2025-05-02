@@ -7,7 +7,7 @@ import pptxgen from 'pptxgenjs';
 import { AlertTriangle, ChevronLeft, Presentation, Check, FileCheck } from 'lucide-react';
 import { Showcase } from '../utils/types';
 import Logger from '../utils/log';
-import { ErrorToast, SuccessToast } from './ToastTestPage';
+import { ErrorToast, SuccessToast } from '../components/layout/Toasts';
 
 const GeneratePresentationPage: React.FC = () => {
   const [searchParams] = useSearchParams();
