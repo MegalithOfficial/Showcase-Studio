@@ -1,8 +1,8 @@
-use reqwest;
-use serde::{Deserialize, Serialize};
-use semver::Version;
-use std::error::Error;
 use chrono::DateTime;
+use reqwest;
+use semver::Version;
+use serde::{Deserialize, Serialize};
+use std::error::Error;
 
 #[derive(Debug, Deserialize)]
 struct GitHubRelease {
@@ -34,7 +34,7 @@ async fn fetch_releases() -> Result<Vec<GitHubRelease>, Box<dyn Error + Send + S
         .await?
         .json::<Vec<GitHubRelease>>()
         .await?;
-    
+
     Ok(releases)
 }
 
@@ -52,10 +52,10 @@ fn parse_version_info(tag_name: &str) -> (String, String) {
     } else {
         tag_name
     };
-    
+
     let parts: Vec<&str> = version_str.split('-').collect();
     let version = parts[0].to_string();
-    
+
     let branch = if parts.len() > 1 {
         match parts[1].to_lowercase().as_str() {
             "beta" => "Beta",
@@ -66,25 +66,28 @@ fn parse_version_info(tag_name: &str) -> (String, String) {
     } else {
         "Stable"
     };
-    
+
     (version, branch.to_string())
 }
 
 fn should_update(current_version: &str, latest_version: &str) -> bool {
-    match (Version::parse(current_version), Version::parse(latest_version)) {
+    match (
+        Version::parse(current_version),
+        Version::parse(latest_version),
+    ) {
         (Ok(current), Ok(latest)) => latest > current,
-        _ => false, 
+        _ => false,
     }
 }
 
 #[tauri::command]
 pub async fn check_for_updates(current_version: String) -> Result<VersionInfo, String> {
     let releases = fetch_releases().await.map_err(|e| e.to_string())?;
-    
+
     if let Some(latest_release) = find_latest_release(&releases) {
         let (latest_version, branch) = parse_version_info(&latest_release.tag_name);
         let update_available = should_update(&current_version, &latest_version);
-        
+
         Ok(VersionInfo {
             version: latest_version,
             branch,
@@ -99,7 +102,7 @@ pub async fn check_for_updates(current_version: String) -> Result<VersionInfo, S
 pub fn get_version_info(current_version: String) -> SimpleVersionInfo {
     let parts: Vec<&str> = current_version.split('-').collect();
     let version = parts[0].to_string();
-    
+
     let branch = if parts.len() > 1 {
         match parts[1].to_lowercase().as_str() {
             "beta" => "Beta",
@@ -110,7 +113,7 @@ pub fn get_version_info(current_version: String) -> SimpleVersionInfo {
     } else {
         "Stable"
     };
-    
+
     SimpleVersionInfo {
         version,
         branch: branch.to_string(),
@@ -125,10 +128,13 @@ pub fn get_current_version() -> SimpleVersionInfo {
 #[tauri::command]
 pub async fn get_update_github_link() -> Result<String, String> {
     let releases = fetch_releases().await.map_err(|e| e.to_string())?;
-    
+
     if let Some(latest_release) = find_latest_release(&releases) {
         let tag_name = &latest_release.tag_name;
-        let github_url = format!("https://github.com/MegalithOfficial/Showcase-Studio/releases/tag/{}", tag_name);
+        let github_url = format!(
+            "https://github.com/MegalithOfficial/Showcase-Studio/releases/tag/{}",
+            tag_name
+        );
         Ok(github_url)
     } else {
         Err("No releases found".to_string())

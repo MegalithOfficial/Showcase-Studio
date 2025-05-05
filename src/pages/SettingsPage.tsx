@@ -1,18 +1,20 @@
 import React from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Info, DatabaseZap, HardDrive, KeyRound } from 'lucide-react';
+import { Info, DatabaseZap, HardDrive, KeyRound, Paintbrush } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { AboutSection } from '../components/settings/AboutSection';
 import { IndexingSection } from '../components/settings/IndexingSection';
 import { DataStorageSection } from '../components/settings/DataStorageSection';
 import { ApiTokensSection } from '../components/settings/ApiTokensSection';
+import { CustomizationSection } from '../components/settings/CustomizationSection';
 import SettingsSidebar from '../components/settings/SettingsSidebar';
 
 const settingsSections = [
    { id: 'about', label: 'About', icon: Info, path: '/settings/about', component: AboutSection },
    { id: 'indexing', label: 'Indexing', icon: DatabaseZap, path: '/settings/indexing', component: IndexingSection },
    { id: 'data', label: 'Data & Storage', icon: HardDrive, path: '/settings/data', component: DataStorageSection },
+   { id: 'customization', label: 'Customization', icon: Paintbrush, path: '/settings/customization', component: CustomizationSection },
    { id: 'tokens', label: 'API Tokens', icon: KeyRound, path: '/settings/tokens', component: ApiTokensSection },
 ];
 

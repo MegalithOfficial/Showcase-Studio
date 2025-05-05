@@ -101,7 +101,6 @@ const MainAppPage: React.FC = () => {
                 const currentVersion = versionInfo.version;
 
                 const updateInfo = await checkForUpdates(currentVersion);
-                updateInfo.shouldUpdate = true
 
                 if (updateInfo.shouldUpdate) {
                     Logger.info(`Update available: v${updateInfo.version} (${updateInfo.branch})`);

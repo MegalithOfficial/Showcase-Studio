@@ -1,11 +1,12 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import SettingsSidebar from './SettingsSidebar';
-import { Key, Database, HardDrive, Info, X, } from 'lucide-react';
+import { Key, Database, HardDrive, Info, X, Paintbrush, } from 'lucide-react';
 
 const settingsSections = [
    { id: 'api', path: 'api', label: 'API Tokens', icon: Key },
    { id: 'indexing', path: 'indexing', label: 'Indexing', icon: Database },
    { id: 'storage', path: 'storage', label: 'Data & Storage', icon: HardDrive },
+   { id: 'customization', path: 'customization', label: 'Customization', icon: Paintbrush },
    { id: 'about', path: 'about', label: 'About', icon: Info },
 ];
 

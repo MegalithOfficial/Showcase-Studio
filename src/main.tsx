@@ -17,7 +17,6 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
           background: '#36393f',
           color: '#ffffff',
         },
-        duration: 4000,
       }}
     />  
     </React.StrictMode>

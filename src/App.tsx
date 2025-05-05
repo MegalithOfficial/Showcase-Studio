@@ -18,6 +18,7 @@ import { ApiTokensSection } from './components/settings/ApiTokensSection';
 import { SettingsLayout } from './components/settings/SettingsLayout';
 
 import Logger from './utils/log';
+import { CustomizationSection } from './components/settings/CustomizationSection';
 
 const LoadingScreen: React.FC = () => (
   <div className="flex items-center justify-center min-h-screen bg-black">
@@ -32,6 +33,7 @@ const settingsSections = [
   { id: 'about', path: 'about', component: AboutSection },
   { id: 'indexing', path: 'indexing', component: IndexingSection },
   { id: 'storage', path: 'storage', component: DataStorageSection },
+  { id: 'customization', path: 'customization', component: CustomizationSection },
   { id: 'api', path: 'api', component: ApiTokensSection },
 ];
 

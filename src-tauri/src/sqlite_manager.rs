@@ -846,13 +846,13 @@ pub async fn delete_all_application_data(
             .0
             .lock()
             .map_err(|e| format!("DB lock error: {}", e))?;
-        
+
         let _ = conn_guard.execute("PRAGMA wal_checkpoint(FULL);", []);
-        
+
         use std::mem;
         let old_conn = mem::replace(&mut *conn_guard, Connection::open_in_memory().unwrap());
         drop(old_conn);
-        
+
         info!("Database connection closed properly");
     }
 

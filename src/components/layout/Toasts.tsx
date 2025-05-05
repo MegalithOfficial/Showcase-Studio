@@ -70,10 +70,15 @@ export const InfoToast = (message: string) => {
                </p>
             </div>
             <button
-               onClick={() => toast.dismiss(t.id)}
-               className="ml-4 flex-shrink-0 text-gray-400 hover:text-gray-300 transition-colors"
+               onClick={(e) => {
+                  e.stopPropagation()
+                  console.log('Close button clicked! Toast ID:', t.id); // <-- Add this
+                  toast.dismiss(t.id);
+               }}
+               className="ml-4 flex-shrink-0 p-1.5 rounded-full text-gray-400 hover:text-gray-100 hover:bg-gray-700/50 transition-all group z-50"
+               aria-label="Close"
             >
-               <X size={16} />
+               <X size={16} className="group-hover:scale-110 transition-transform" />
             </button>
          </div>
       </div>

@@ -14,9 +14,7 @@ mod showcase_manager;
 mod sqlite_manager;
 mod version_manager;
 
-use discord::{
-    fetch_discord_guilds, get_discord_channels, start_initial_indexing
-};
+use discord::{fetch_discord_guilds, get_discord_channels, start_initial_indexing};
 use log::{error, info};
 use showcase_manager::{
     check_showcase_pptx_exists, create_showcase, delete_showcase, get_selected_messages,
@@ -30,7 +28,7 @@ use sqlite_manager::{
 };
 
 use version_manager::{
-    check_for_updates, get_version_info, get_current_version, get_update_github_link
+    check_for_updates, get_current_version, get_update_github_link, get_version_info,
 };
 
 pub const KEYRING_SERVICE_NAME: &str = "com.megalith.showcase-app";
@@ -215,6 +213,7 @@ async fn is_setup_complete(db_state: State<'_, DbConnection>) -> Result<bool, St
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -311,7 +310,7 @@ pub fn run() {
             clean_old_data,
             delete_all_application_data,
             // Version Commands (version_manager.rs)
-            check_for_updates, 
+            check_for_updates,
             get_version_info,
             get_current_version,
             get_update_github_link
@@ -319,4 +318,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
