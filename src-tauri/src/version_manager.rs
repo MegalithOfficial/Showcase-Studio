@@ -1,6 +1,6 @@
 use reqwest;
 use serde::{Deserialize, Serialize};
-use semver::{Version};
+use semver::Version;
 use std::error::Error;
 use chrono::DateTime;
 

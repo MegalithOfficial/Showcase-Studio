@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -11,6 +11,8 @@ import NewShowcaseModal from '../components/showcases/NewShowcaseModal';
 import toast from 'react-hot-toast';
 import { invoke } from '@tauri-apps/api/core';
 import Logger from '../utils/log';
+import { checkForUpdates, getCurrentVersion } from '../utils/versionCheck';
+import { UpdateToast } from '../components/layout/Toasts';
 
 type SortField = 'title' | 'dateCreated' | 'lastModified' | 'itemCount';
 type SortDirection = 'asc' | 'desc';
@@ -55,11 +57,11 @@ const MainAppPage: React.FC = () => {
 
                 Logger.success("Showcase created successfully in backend");
                 navigate(`/select_images?id=${newId}`);
-                resolve(); 
+                resolve();
             } catch (error) {
                 Logger.error("Error during showcase creation:", error);
                 const message = error instanceof Error ? error.message : "An unknown error occurred.";
-                reject(new Error(message)); 
+                reject(new Error(message));
             }
         });
 
@@ -72,14 +74,14 @@ const MainAppPage: React.FC = () => {
             },
             {
                 style: {
-                    background: '#333', 
+                    background: '#333',
                     color: '#fff',
                 },
                 success: {
-                    duration: 3000, 
+                    duration: 3000,
                 },
                 error: {
-                    duration: 5000, 
+                    duration: 5000,
                 }
             }
         );
@@ -89,6 +91,36 @@ const MainAppPage: React.FC = () => {
             handleCloseNewShowcaseModal();
         }).catch(() => { });
     };
+
+    useEffect(() => {
+        const checkUpdates = async () => {
+            try {
+                Logger.info("Checking for updates...");
+
+                const versionInfo = await getCurrentVersion();
+                const currentVersion = versionInfo.version;
+
+                const updateInfo = await checkForUpdates(currentVersion);
+                updateInfo.shouldUpdate = true
+
+                if (updateInfo.shouldUpdate) {
+                    Logger.info(`Update available: v${updateInfo.version} (${updateInfo.branch})`);
+                    UpdateToast(updateInfo.version);
+                } else {
+                    Logger.info("No updates available.");
+                }
+
+            } catch (error) {
+                Logger.error("Error checking for updates:", error);
+            }
+        };
+
+        const timer = setTimeout(() => {
+            checkUpdates();
+        }, 4000);
+
+        return () => clearTimeout(timer);
+    }, []);
 
 
     return (
