@@ -448,7 +448,7 @@ fn map_row_to_indexed_message(row: &Row) -> Result<IndexedMessage, RusqliteError
             })?
         },
         _ => Vec::new(),
-    };
+    };  
 
     let is_used: bool = row.get(8).unwrap_or(false);
 
