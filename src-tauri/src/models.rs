@@ -70,11 +70,28 @@ pub struct UpdateShowcasePayload {
     pub status: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct FirstSlideSettings {
+    #[serde(rename = "backgroundImage", skip_serializing_if = "Option::is_none")]
+    pub background_image: Option<String>,
+    #[serde(rename = "showTitle")]
+    pub show_title: bool,
+    #[serde(rename = "showAuthor")]
+    pub show_author: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct AppConfig {
     pub selected_server_id: Option<String>,
     pub selected_channel_ids: Vec<String>,
     pub is_setup_complete: bool,
+
+    #[serde(rename = "overlaySettings", skip_serializing_if = "Option::is_none")]
+    pub overlay_settings: Option<OverlaySettings>,
+    #[serde(rename = "firstSlideSettings", skip_serializing_if = "Option::is_none")]
+    pub first_slide_settings: Option<FirstSlideSettings>,
+    #[serde(rename = "autoUpdateEnabled", skip_serializing_if = "Option::is_none")]
+    pub auto_update_enabled: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
