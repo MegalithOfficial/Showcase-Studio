@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
    Bot,
-   Route,
    Clapperboard,
    ArrowRight,
    Server,
@@ -58,7 +57,6 @@ const SetupPage: React.FC = () => {
    const navigate = useNavigate();
 
    const [discordToken, setDiscordToken] = useState<string>('');
-   const [openRouterKey, setOpenRouterKey] = useState<string>('');
    const [isSaving, setIsSaving] = useState<boolean>(false);
    const [servers, setServers] = useState<SerializableGuild[]>([]);
    const [selectedServer, setSelectedServer] = useState<SerializableGuild | null>(null);
@@ -202,10 +200,6 @@ const SetupPage: React.FC = () => {
          await invoke('save_secret', {
             keyName: "discordBotToken",
             secret: discordToken
-         });
-         await invoke('save_secret', {
-            keyName: "openRouterApiKey",
-            secret: openRouterKey || ''
          });
 
          Logger.info('Configuration saved successfully.');
@@ -391,27 +385,6 @@ const SetupPage: React.FC = () => {
                               />
                            </div>
                            <p className="mt-1.5 text-xs text-gray-500">Required. Found in your Discord Developer Portal.</p>
-                        </div>
-                        {/* OpenRouter Key Input */}
-                        <div>
-                           <label htmlFor="openRouterKey" className="block text-sm font-medium text-gray-300 mb-1.5">
-                              OpenRouter API Key <span className='text-gray-500 text-xs'>(Optional)</span>
-                           </label>
-                           <div className="relative group">
-                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                 <Route className="h-5 w-5 text-gray-400 group-focus-within:text-indigo-400 transition-colors duration-200" />
-                              </div>
-                              <input
-                                 type="password"
-                                 id="openRouterKey"
-                                 value={openRouterKey}
-                                 onChange={(e) => setOpenRouterKey(e.target.value)}
-                                 disabled={isSaving}
-                                 className="block w-full pl-10 pr-3 py-2.5 bg-gray-900/70 border border-gray-700 rounded-md shadow-sm placeholder-gray-500 text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-950 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition duration-150 ease-in-out"
-                                 placeholder="sk-or-..."
-                              />
-                           </div>
-                           <p className="mt-1.5 text-xs text-gray-500">Optional. For potential future AI features.</p>
                         </div>
                         {/* Save Button */}
                         <div>
