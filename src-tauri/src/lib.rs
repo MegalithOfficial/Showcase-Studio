@@ -16,6 +16,8 @@ mod version_manager;
 
 use discord::{fetch_discord_guilds, get_discord_channels, start_initial_indexing};
 use log::{error, info};
+// Ensure models::AppConfig is usable, along with other necessary models
+use models::{AppConfig, FirstSlideSettings, OverlaySettings};
 use showcase_manager::{
     check_showcase_pptx_exists, create_showcase, delete_showcase, get_selected_messages,
     get_showcase, get_showcase_images, list_showcases, open_showcase_pptx, save_selected_messages,
@@ -105,32 +107,19 @@ async fn delete_secret(key_name: String) -> Result<(), String> {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Default)]
-struct AppConfig {
-    selected_server_id: Option<String>,
-    selected_channel_ids: Vec<String>,
-    is_setup_complete: bool,
-}
+// Local AppConfig struct removed, will use models::AppConfig
 
 #[tauri::command]
 async fn set_configuration(
-    server_id: Option<String>,
-    channel_ids: Vec<String>,
-    is_setup_complete: bool,
+    config: models::AppConfig, // Changed to use models::AppConfig
     db_state: State<'_, DbConnection>,
 ) -> Result<(), String> {
-    info!(
-        "Saving configuration: server={:?}, channels={:?}, setup_complete={}",
-        server_id, channel_ids, is_setup_complete
-    );
+    info!("Saving full configuration: {:?}", config);
 
     let mut conn_guard = db_state
         .0
         .lock()
         .map_err(|e| format!("DB lock error: {}", e))?;
-
-    let channels_json = serde_json::to_string(&channel_ids)
-        .map_err(|e| format!("Failed to serialize channel IDs: {}", e))?;
 
     let tx = conn_guard
         .transaction()
@@ -138,76 +127,140 @@ async fn set_configuration(
 
     let insert_sql = "INSERT OR REPLACE INTO config (key, value) VALUES (?1, ?2);";
 
-    if let Some(id) = &server_id {
+    // selected_server_id
+    if let Some(id) = &config.selected_server_id {
         tx.execute(insert_sql, params!["selected_server_id", id])
-            .map_err(|e| format!("Failed to save server_id: {}", e))?;
+            .map_err(|e| format!("Failed to save selected_server_id: {}", e))?;
     } else {
         tx.execute("DELETE FROM config WHERE key = 'selected_server_id';", [])
-            .map_err(|e| format!("Failed to delete server_id: {}", e))?;
+            .map_err(|e| format!("Failed to delete selected_server_id: {}", e))?;
     }
 
+    // selected_channel_ids
+    let channels_json = serde_json::to_string(&config.selected_channel_ids)
+        .map_err(|e| format!("Failed to serialize selected_channel_ids: {}", e))?;
     tx.execute(insert_sql, params!["selected_channel_ids", &channels_json])
-        .map_err(|e| format!("Failed to save channel_ids: {}", e))?;
+        .map_err(|e| format!("Failed to save selected_channel_ids: {}", e))?;
 
+    // is_setup_complete
     tx.execute(
         insert_sql,
         params![
             "is_setup_complete",
-            if is_setup_complete { "true" } else { "false" }
+            if config.is_setup_complete { "true" } else { "false" }
         ],
     )
-    .map_err(|e| format!("Failed to save setup_complete: {}", e))?;
+    .map_err(|e| format!("Failed to save is_setup_complete: {}", e))?;
+
+    // overlay_settings
+    if let Some(settings) = &config.overlay_settings {
+        let json_val = serde_json::to_string(settings)
+            .map_err(|e| format!("Failed to serialize overlay_settings: {}", e))?;
+        tx.execute(insert_sql, params!["overlay_settings_json", json_val])
+            .map_err(|e| format!("Failed to save overlay_settings_json: {}", e))?;
+    } else {
+        tx.execute("DELETE FROM config WHERE key = 'overlay_settings_json';", [])
+            .map_err(|e| format!("Failed to delete overlay_settings_json: {}", e))?;
+    }
+
+    // first_slide_settings
+    if let Some(settings) = &config.first_slide_settings {
+        let json_val = serde_json::to_string(settings)
+            .map_err(|e| format!("Failed to serialize first_slide_settings: {}", e))?;
+        tx.execute(insert_sql, params!["first_slide_settings_json", json_val])
+            .map_err(|e| format!("Failed to save first_slide_settings_json: {}", e))?;
+    } else {
+        tx.execute("DELETE FROM config WHERE key = 'first_slide_settings_json';", [])
+            .map_err(|e| format!("Failed to delete first_slide_settings_json: {}", e))?;
+    }
+
+    // auto_update_enabled
+    if let Some(enabled) = config.auto_update_enabled {
+        tx.execute(insert_sql, params!["auto_update_enabled", if enabled { "true" } else { "false" }])
+            .map_err(|e| format!("Failed to save auto_update_enabled: {}", e))?;
+    } else {
+        tx.execute("DELETE FROM config WHERE key = 'auto_update_enabled';", [])
+            .map_err(|e| format!("Failed to delete auto_update_enabled: {}", e))?;
+    }
 
     tx.commit()
         .map_err(|e| format!("Failed to commit transaction: {}", e))?;
 
-    println!("Configuration saved successfully to DB.");
+    info!("Full configuration saved successfully to DB.");
     Ok(())
 }
 
 #[tauri::command]
-async fn get_configuration(db_state: State<'_, DbConnection>) -> Result<AppConfig, String> {
-    println!("Command get_configuration called.");
+async fn get_configuration(db_state: State<'_, DbConnection>) -> Result<models::AppConfig, String> { // Return type changed
+    info!("Command get_configuration called.");
     let conn_guard = db_state
         .0
         .lock()
         .map_err(|e| format!("DB lock error in get_configuration command: {}", e))?;
-    retrieve_config(&conn_guard)
+    // retrieve_config is already expected to return models::AppConfig from sqlite_manager modifications
+    sqlite_manager::retrieve_config(&conn_guard)
 }
 
 #[tauri::command]
 async fn is_setup_complete(db_state: State<'_, DbConnection>) -> Result<bool, String> {
-    let conn_guard = db_state
-        .0
-        .lock()
-        .map_err(|e| format!("DB lock error: {}", e))?;
-
-    let mut stmt = conn_guard
-        .prepare("SELECT key, value FROM config;")
-        .map_err(|e| format!("Failed to prepare query: {}", e))?;
-
-    let mut rows = stmt
-        .query([])
-        .map_err(|e| format!("Failed to query configuration: {}", e))?;
-
-    let mut config = AppConfig::default();
-
-    while let Some(row) = rows
-        .next()
-        .map_err(|e| format!("Failed to read row: {}", e))?
-    {
-        let key: String = row
-            .get(0)
-            .map_err(|e| format!("Failed to get key: {}", e))?;
-        let value: String = row
-            .get(1)
-            .map_err(|e| format!("Failed to get value: {}", e))?;
-        if key == "is_setup_complete" {
-            config.is_setup_complete = value == "true";
-        }
-    }
-
+    info!("Command is_setup_complete called.");
+    // Re-use get_configuration to simplify and ensure consistency
+    let config = get_configuration(db_state).await?;
     Ok(config.is_setup_complete)
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
+struct CustomizationSettingsPayload {
+    #[serde(rename = "overlaySettings", skip_serializing_if = "Option::is_none")]
+    overlay_settings: Option<models::OverlaySettings>,
+    #[serde(rename = "firstSlideSettings", skip_serializing_if = "Option::is_none")]
+    first_slide_settings: Option<models::FirstSlideSettings>,
+    #[serde(rename = "autoUpdateEnabled", skip_serializing_if = "Option::is_none")]
+    auto_update_enabled: Option<bool>,
+}
+
+#[tauri::command]
+async fn get_customization_settings(db_state: State<'_, DbConnection>) -> Result<CustomizationSettingsPayload, String> {
+    info!("Fetching customization settings...");
+    let config = get_configuration(db_state).await?;
+    Ok(CustomizationSettingsPayload {
+        overlay_settings: config.overlay_settings,
+        first_slide_settings: config.first_slide_settings,
+        auto_update_enabled: config.auto_update_enabled,
+    })
+}
+
+#[tauri::command]
+async fn save_customization_settings(
+    payload: CustomizationSettingsPayload,
+    db_state: State<'_, DbConnection>,
+) -> Result<(), String> {
+    info!("Saving customization settings: {:?}", payload);
+    let mut current_config = get_configuration(db_state.clone()).await?; // Clone db_state for multiple uses
+    
+    current_config.overlay_settings = payload.overlay_settings;
+    current_config.first_slide_settings = payload.first_slide_settings;
+    current_config.auto_update_enabled = payload.auto_update_enabled;
+    
+    set_configuration(current_config, db_state).await
+}
+
+#[tauri::command]
+async fn get_auto_update_setting(db_state: State<'_, DbConnection>) -> Result<Option<bool>, String> {
+    info!("Fetching auto_update_setting...");
+    let config = get_configuration(db_state).await?;
+    Ok(config.auto_update_enabled)
+}
+
+#[tauri::command]
+async fn set_auto_update_setting(
+    enabled: bool,
+    db_state: State<'_, DbConnection>,
+) -> Result<(), String> {
+    info!("Setting auto_update_setting to: {}", enabled);
+    let mut current_config = get_configuration(db_state.clone()).await?;
+    current_config.auto_update_enabled = Some(enabled);
+    set_configuration(current_config, db_state).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -313,7 +366,12 @@ pub fn run() {
             check_for_updates,
             get_version_info,
             get_current_version,
-            get_update_github_link
+            get_update_github_link,
+            // New Customization Commands
+            get_customization_settings,
+            save_customization_settings,
+            get_auto_update_setting,
+            set_auto_update_setting
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Paintbrush, RefreshCw, Bell, BellOff, Loader2, Layers, Image as ImageIcon, 
-  Upload, Sliders, User, Type, Settings, Info, ArrowLeft, X, Check } from 'lucide-react';
+  Upload, Sliders, User, Type, Settings, Info, ArrowLeft, X, Check, Save, RotateCcw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { InfoToast } from '../layout/Toasts';
 import Logger from '../../utils/log';
 import { open } from '@tauri-apps/plugin-dialog';
-import type { OverlayPosition, OverlayStyle, OverlaySettings } from '../../utils/types';
+import { motion, AnimatePresence } from 'framer-motion';
+import type { OverlayPosition, OverlayStyle, OverlaySettings, FirstSlideSettings, CustomizationSettingsPayload } from '../../utils/types';
 
 export const CustomizationSection: React.FC = () => {
    const [autoUpdatesEnabled, setAutoUpdatesEnabled] = useState<boolean>(true);
@@ -26,58 +27,73 @@ export const CustomizationSection: React.FC = () => {
    const [showAuthor, setShowAuthor] = useState<boolean>(true);
 
    useEffect(() => {
-      const loadSettings = async () => {
-         try {
-            Logger.info("Loading customization preferences");
+     const loadSettings = async () => {
+       try {
+         Logger.info("Loading customization preferences from backend");
+         const backendSettings = await invoke<CustomizationSettingsPayload>('get_customization_settings');
 
-            // Load update settings
-            const updateSetting = await invoke<boolean>('get_auto_update_setting').catch(() => true);
-            setAutoUpdatesEnabled(updateSetting);
+         setAutoUpdatesEnabled(backendSettings.autoUpdateEnabled ?? true);
 
-            // Load overlay settings (these would come from your backend in a real app)
-            setOverlayPosition('bottom-right');
-            setOverlayStyle('black');
-            setOverlayWidth(70);
-            setOverlayTransparency(20);
-            setShowAvatar(true);
+         const os = backendSettings.overlaySettings;
+         setOverlayPosition(os?.position ?? 'bottom-right');
+         setOverlayStyle(os?.style ?? 'black');
+         setOverlayWidth(os?.width ?? 70);
+         setOverlayTransparency(os?.transparency ?? 20);
+         setShowAvatar(os?.showAvatar ?? true);
 
-            // Load first slide settings
-            setFirstSlideImage(null);
-            setShowTitle(true);
-            setShowAuthor(true);
-         } catch (error) {
-            Logger.error("Failed to load customization settings:", error);
-         } finally {
-            setIsLoading(false);
-         }
-      };
+         const fs = backendSettings.firstSlideSettings;
+         setFirstSlideImage(fs?.backgroundImage ?? null);
+         setShowTitle(fs?.showTitle ?? true);
+         setShowAuthor(fs?.showAuthor ?? true);
 
-      loadSettings();
-   }, []);
+       } catch (error) {
+         Logger.error("Failed to load customization settings from backend:", error);
+         // Fallback to UI defaults if backend load fails
+         setAutoUpdatesEnabled(true);
+         setOverlayPosition('bottom-right');
+         setOverlayStyle('black');
+         setOverlayWidth(70);
+         setOverlayTransparency(20);
+         setShowAvatar(true);
+         setFirstSlideImage(null);
+         setShowTitle(true);
+         setShowAuthor(true);
+       } finally {
+         setIsLoading(false);
+         setTimeout(() => { // Important: allow state updates to process
+           setHasChanges(false);
+         }, 0);
+       }
+     };
+     loadSettings();
+   }, []); // Empty dependency array means this runs once on mount
 
    // Track changes to set the hasChanges flag
    useEffect(() => {
-      if (!isLoading) {
-         setHasChanges(true);
-      }
-   }, [overlayPosition, overlayStyle, overlayWidth, overlayTransparency, 
-       showAvatar, firstSlideImage, showTitle, showAuthor, autoUpdatesEnabled]);
+     if (!isLoading) { // This condition is important
+       setHasChanges(true);
+     }
+   }, [
+     overlayPosition, overlayStyle, overlayWidth, overlayTransparency,
+     showAvatar, firstSlideImage, showTitle, showAuthor, autoUpdatesEnabled
+   ]);
 
    const handleToggleAutoUpdates = async () => {
-      if (isSaving) return;
+     if (isSaving) return;
 
-      const newValue = !autoUpdatesEnabled;
-      setIsSaving(true);
+     const newValue = !autoUpdatesEnabled;
+     setIsSaving(true);
 
-      try {
-         Logger.info(`Setting auto updates to: ${newValue}`);
-         setAutoUpdatesEnabled(newValue);
-         InfoToast(`Automatic updates ${newValue ? "enabled" : "disabled"}`);
-      } catch (error) {
-         Logger.error("Failed to save update setting:", error);
-      } finally {
-         setIsSaving(false);
-      }
+     try {
+       Logger.info(`Setting auto updates to: ${newValue} via backend`);
+       await invoke('set_auto_update_setting', { enabled: newValue });
+       setAutoUpdatesEnabled(newValue); // Update UI state after successful backend call
+       InfoToast(`Automatic updates ${newValue ? "enabled" : "disabled"}`);
+     } catch (error) {
+       Logger.error("Failed to save update setting via backend:", error);
+     } finally {
+       setIsSaving(false);
+     }
    };
 
    const handleSelectFirstSlideImage = async () => {
@@ -132,42 +148,58 @@ export const CustomizationSection: React.FC = () => {
       setShowAuthor(!showAuthor);
    };
 
+   const handleResetSettings = async () => {
+     try {
+       Logger.info("Resetting customization settings to defaults");
+       
+       // Reset to defaults
+       setAutoUpdatesEnabled(true);
+       setOverlayPosition('bottom-right');
+       setOverlayStyle('black');
+       setOverlayWidth(70);
+       setOverlayTransparency(20);
+       setShowAvatar(true);
+       setFirstSlideImage(null);
+       setShowTitle(true);
+       setShowAuthor(true);
+       
+       InfoToast("Settings reset to defaults");
+     } catch (error) {
+       Logger.error("Failed to reset settings:", error);
+     }
+   };
+
    const handleSaveSettings = async () => {
-      setIsSaving(true);
-      try {
-         Logger.info("Saving customization settings");
+     setIsSaving(true);
+     try {
+       Logger.info("Saving customization settings to backend");
 
-         // Create the overlay settings object that matches your application types
-         const defaultOverlay: OverlaySettings = {
-            position: overlayPosition,
-            style: overlayStyle,
-            showAvatar: showAvatar,
-            width: overlayWidth,
-            transparency: overlayTransparency
-         };
+       const settingsToSave: CustomizationSettingsPayload = {
+         autoUpdateEnabled: autoUpdatesEnabled,
+         overlaySettings: {
+           position: overlayPosition,
+           style: overlayStyle,
+           showAvatar: showAvatar,
+           width: overlayWidth,
+           transparency: overlayTransparency
+         },
+         firstSlideSettings: {
+           backgroundImage: firstSlideImage,
+           showTitle: showTitle,
+           showAuthor: showAuthor
+         }
+       };
+       
+       await invoke('save_customization_settings', { payload: settingsToSave });
 
-         // Save all settings together
-         // This would call your backend in a real implementation
-         // await invoke('save_customization_settings', {
-         //   autoUpdates: autoUpdatesEnabled,
-         //   defaultOverlay: defaultOverlay,
-         //   firstSlide: {
-         //     backgroundImage: firstSlideImage,
-         //     showTitle: showTitle,
-         //     showAuthor: showAuthor
-         //   }
-         // });
-
-         // For demo, just delay to simulate saving
-         await new Promise(resolve => setTimeout(resolve, 500));
-
-         InfoToast("Settings saved successfully");
-         setHasChanges(false);
-      } catch (error) {
-         Logger.error("Failed to save settings:", error);
-      } finally {
-         setIsSaving(false);
-      }
+       InfoToast("Settings saved successfully");
+       setHasChanges(false); // Reset hasChanges after successful save
+     } catch (error) {
+       Logger.error("Failed to save settings to backend:", error);
+       // Optionally show an error toast to the user
+     } finally {
+       setIsSaving(false);
+     }
    };
 
    const getPositionClass = () => {
@@ -623,6 +655,108 @@ export const CustomizationSection: React.FC = () => {
             </div>
          </div>
 
+         {/* Floating Save Overlay - Discord Style with Framer Motion */}
+         <AnimatePresence>
+            {hasChanges && (
+               <motion.div 
+                  initial={{ 
+                     opacity: 0, 
+                     scale: 0.9, 
+                     y: 20,
+                     x: 20
+                  }}
+                  animate={{ 
+                     opacity: 1, 
+                     scale: 1, 
+                     y: 0,
+                     x: 0
+                  }}
+                  exit={{ 
+                     opacity: 0, 
+                     scale: 0.95, 
+                     y: 10,
+                     x: 10
+                  }}
+                  transition={{
+                     type: "spring",
+                     stiffness: 300,
+                     damping: 25,
+                     duration: 0.3
+                  }}
+                  className="fixed bottom-6 right-6 z-50"
+               >
+                  <motion.div 
+                     className="bg-gray-900/95 backdrop-blur-sm border border-gray-700/80 rounded-xl shadow-2xl shadow-black/20 p-4 min-w-[320px]"
+                     whileHover={{ scale: 1.02 }}
+                     transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                  >
+                     <div className="flex items-start gap-3">
+                        <motion.div 
+                           className="flex-shrink-0 w-8 h-8 bg-amber-500/20 rounded-full flex items-center justify-center mt-0.5"
+                           initial={{ rotate: -10 }}
+                           animate={{ rotate: 0 }}
+                           transition={{ delay: 0.1 }}
+                        >
+                           <Info className="w-4 h-4 text-amber-400" />
+                        </motion.div>
+                        <div className="flex-1">
+                           <motion.h4 
+                              className="text-sm font-medium text-slate-200 mb-1"
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: 0.1 }}
+                           >
+                              Careful — you have unsaved changes!
+                           </motion.h4>
+                           <motion.p 
+                              className="text-xs text-slate-400 mb-4"
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: 0.15 }}
+                           >
+                              Your customization settings have been modified but not saved yet.
+                           </motion.p>
+                           <motion.div 
+                              className="flex gap-2"
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.2 }}
+                           >
+                              <motion.button
+                                 onClick={handleResetSettings}
+                                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-400 hover:text-slate-300 transition-colors duration-150"
+                                 whileHover={{ scale: 1.05 }}
+                                 whileTap={{ scale: 0.95 }}
+                              >
+                                 <RotateCcw className="w-3.5 h-3.5" />
+                                 Reset
+                              </motion.button>
+                              <motion.button
+                                 onClick={handleSaveSettings}
+                                 disabled={isSaving}
+                                 className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 disabled:cursor-not-allowed text-white text-xs font-medium rounded-md transition-all duration-150"
+                                 whileHover={{ scale: isSaving ? 1 : 1.05 }}
+                                 whileTap={{ scale: isSaving ? 1 : 0.95 }}
+                              >
+                                 {isSaving ? (
+                                    <>
+                                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                       Saving...
+                                    </>
+                                 ) : (
+                                    <>
+                                       <Save className="w-3.5 h-3.5" />
+                                       Save Changes
+                                    </>
+                                 )}
+                              </motion.button>
+                           </motion.div>
+                        </div>
+                     </div>
+                  </motion.div>
+               </motion.div>
+            )}
+         </AnimatePresence>
       </div>
    );
 };

@@ -9,8 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::{AppHandle, Manager, State};
 
-use crate::models::{CleanupStats, IndexedMessage, StorageUsage};
-use crate::AppConfig;
+use crate::models::{AppConfig, CleanupStats, FirstSlideSettings, IndexedMessage, OverlaySettings, StorageUsage};
 use crate::{log_error as error, log_info as info, log_warn as warn};
 
 use base64::{engine::general_purpose::STANDARD as base64_engine, Engine as _};
@@ -415,7 +414,29 @@ pub fn retrieve_config(conn_guard: &MutexGuard<Connection>) -> Result<AppConfig,
                 "is_setup_complete" => {
                     config.is_setup_complete = value == "true";
                 }
-                _ => {}
+                "overlay_settings_json" => {
+                    match serde_json::from_str::<OverlaySettings>(&value) {
+                        Ok(settings) => config.overlay_settings = Some(settings),
+                        Err(e) => error!("Failed to deserialize overlay_settings_json: {}. Value was: '{}'", e, value),
+                    }
+                }
+                "first_slide_settings_json" => {
+                    match serde_json::from_str::<FirstSlideSettings>(&value) {
+                        Ok(settings) => config.first_slide_settings = Some(settings),
+                        Err(e) => error!("Failed to deserialize first_slide_settings_json: {}. Value was: '{}'", e, value),
+                    }
+                }
+                "auto_update_enabled" => {
+                    match value.to_lowercase().as_str() {
+                        "true" => config.auto_update_enabled = Some(true),
+                        "false" => config.auto_update_enabled = Some(false),
+                        _ => error!("Invalid boolean string for auto_update_enabled: '{}'", value),
+                    }
+                }
+                _ => {
+                    // Optionally log unknown keys
+                    // warn!("Unknown config key found: {}", key);
+                }
             },
             Err(e) => {
                 error!("Error processing config row: {}", e);

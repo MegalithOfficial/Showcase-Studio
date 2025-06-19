@@ -85,6 +85,18 @@ export interface StorageUsage {
     image_cache_path: string
 }
 
+export interface FirstSlideSettings {
+  backgroundImage?: string | null;
+  showTitle: boolean;
+  showAuthor: boolean;
+}
+
+export interface CustomizationSettingsPayload {
+  overlaySettings?: OverlaySettings | null;
+  firstSlideSettings?: FirstSlideSettings | null;
+  autoUpdateEnabled?: boolean | null;
+}
+
 export interface EditableImage {
     id: string;
     message_id: string;
