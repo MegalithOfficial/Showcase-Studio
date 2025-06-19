@@ -2,9 +2,11 @@ use chrono::Local;
 use log::{Level, LevelFilter, Metadata, Record};
 use once_cell::sync::Lazy;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Write, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use zip::write::{FileOptions, ZipWriter};
+use zip::CompressionMethod;
 use tauri::AppHandle;
 use tauri::Manager;
 
@@ -150,6 +152,119 @@ impl log::Log for CustomLogger {
     }
 }
 
+fn archive_old_logs(logs_dir: &Path) -> Result<(), String> {
+    let today_str = Local::now().format("%Y-%m-%d").to_string();
+    let mut archived_count = 0;
+    let mut error_count = 0;
+
+    crate::log_info!("Starting scan for old log files to archive in '{}'...", logs_dir.display());
+
+    match fs::read_dir(logs_dir) {
+        Ok(entries) => {
+            for entry_result in entries {
+                match entry_result {
+                    Ok(entry) => {
+                        let path = entry.path();
+                        if path.is_file() {
+                            if let Some(filename_str) = path.file_name().and_then(|name| name.to_str()) {
+                                if filename_str.ends_with(".log") {
+                                    let mut filename_parts_iter = filename_str.splitn(3, '_');
+                                    let prefix_opt = filename_parts_iter.next();
+                                    let date_opt = filename_parts_iter.next();
+
+                                    if let (Some(prefix), Some(file_date_str)) = (prefix_opt, date_opt) {
+                                        if (prefix == "backend" || prefix == "frontend") && file_date_str.len() == 10 {
+                                            if file_date_str != today_str {
+                                                crate::log_info!("Found old log file: {}", filename_str);
+                                                let zip_file_path = path.with_extension("log.zip");
+
+                                                match File::create(&zip_file_path) {
+                                                    Ok(zip_file) => {
+                                                        let mut zip_writer = ZipWriter::new(zip_file);
+                                                        let options = FileOptions::default()
+                                                            .compression_method(CompressionMethod::Deflated)
+                                                            .unix_permissions(0o644);
+
+                                                        if let Err(e) = zip_writer.start_file(filename_str, options) {
+                                                            crate::log_error!("Failed to start file in zip archive for {}: {}", filename_str, e);
+                                                            error_count += 1;
+                                                            if let Err(del_err) = fs::remove_file(&zip_file_path) {
+                                                                 crate::log_warn!("Failed to delete incomplete zip file {}: {}", zip_file_path.display(), del_err);
+                                                            }
+                                                            continue;
+                                                        }
+                                                        
+                                                        match File::open(&path) {
+                                                            Ok(mut log_file_content) => {
+                                                                let mut buffer = Vec::new();
+                                                                if let Err(e) = log_file_content.read_to_end(&mut buffer) {
+                                                                    crate::log_error!("Failed to read content of {}: {}", filename_str, e);
+                                                                    error_count += 1;
+                                                                    continue;
+                                                                }
+                                                                if let Err(e) = zip_writer.write_all(&buffer) {
+                                                                    crate::log_error!("Failed to write content to zip for {}: {}", filename_str, e);
+                                                                    error_count += 1;
+                                                                    continue;
+                                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                crate::log_error!("Failed to open log file {} for reading: {}", filename_str, e);
+                                                                error_count += 1;
+                                                                continue;
+                                                            }
+                                                        }
+
+                                                        if let Err(e) = zip_writer.finish() {
+                                                            crate::log_error!("Failed to finalize zip archive for {}: {}", filename_str, e);
+                                                            error_count += 1;
+                                                            continue;
+                                                        }
+
+                                                        crate::log_info!("Successfully archived {} to {}", filename_str, zip_file_path.display());
+
+                                                        if let Err(e) = fs::remove_file(&path) {
+                                                            crate::log_error!("Failed to delete original log file {}: {}", filename_str, e);
+                                                            error_count += 1;
+                                                        } else {
+                                                            crate::log_info!("Deleted original log file: {}", filename_str);
+                                                            archived_count += 1;
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        crate::log_error!("Failed to create zip file for {}: {}", filename_str, e);
+                                                        error_count += 1;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        crate::log_warn!("Failed to read directory entry: {}", e);
+                        error_count += 1;
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            let err_msg = format!("Failed to read logs directory '{}': {}", logs_dir.display(), e);
+            crate::log_error!("{}", err_msg);
+            return Err(err_msg);
+        }
+    }
+
+    crate::log_info!("Log archival scan complete. Archived {} files. Encountered {} errors.", archived_count, error_count);
+    if error_count > 0 {
+        Ok(()) 
+    } else {
+        Ok(())
+    }
+}
+
 impl LogFileHandler {
     fn new(log_dir: &Path, log_prefix: &str) -> io::Result<Self> {
         fs::create_dir_all(log_dir)?;
@@ -174,7 +289,7 @@ impl LogFileHandler {
             .append(true)
             .open(&log_path)?;
 
-        Ok(LogFileHandler { file, log_path }) 
+        Ok(LogFileHandler { file, log_path })
     }
 
     fn log_path(&self) -> &PathBuf {
@@ -189,6 +304,15 @@ pub fn init_logging(app_handle: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
 
     let logs_dir = app_data_dir.join("logs");
+
+    if let Err(e) = fs::create_dir_all(&logs_dir) {
+        eprintln!("Failed to create logs directory '{}': {}", logs_dir.display(), e);
+        return Err(format!("Failed to create logs directory '{}': {}", logs_dir.display(), e));
+    }
+
+    if let Err(e) = archive_old_logs(&logs_dir) {
+        eprintln!("Error during log archival process: {}", e);
+    }
 
     let backend_file_handler =
         LogFileHandler::new(&logs_dir, "backend")
