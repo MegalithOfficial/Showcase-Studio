@@ -1,3 +1,5 @@
+import { info as feInfo, warn as feWarn, error as feError } from './frontendLogger';
+
 /**
  * Console Logger Utility Bundle
  * A set of enhanced logging functions for prettier, more informative console output
@@ -47,6 +49,10 @@ const Logger = {
    },
 
    info(message: string, data?: any, module?: string): void {
+      // Backend logging (only the main message)
+      feInfo(module ? `[${module}] ${message}` : message);
+
+      // Existing console logging
       console.log(
          `%c${this.timestamp()} ${this.formatModule(module)} ℹ INFO: %c${message}`,
          this.styles.info,
@@ -57,6 +63,10 @@ const Logger = {
    },
 
    warn(message: string, data?: any, module?: string): void {
+      // Backend logging (only the main message)
+      feWarn(module ? `[${module}] ${message}` : message);
+
+      // Existing console logging
       console.log(
          `%c${this.timestamp()} ${this.formatModule(module)} ⚠ WARNING: %c${message}`,
          this.styles.warning,
@@ -67,6 +77,10 @@ const Logger = {
    },
 
    error(message: string, errorObj?: Error | any, module?: string): void {
+      // Backend logging
+      feError(module ? `[${module}] ${message}` : message, errorObj);
+
+      // Existing console logging
       console.log(
          `%c${this.timestamp()} ${this.formatModule(module)} ✖ ERROR: %c${message}`,
          this.styles.error,

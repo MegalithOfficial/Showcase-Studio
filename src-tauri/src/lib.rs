@@ -209,6 +209,28 @@ async fn is_setup_complete(db_state: State<'_, DbConnection>) -> Result<bool, St
     Ok(config.is_setup_complete)
 }
 
+#[tauri::command]
+async fn log_frontend_info(message: String) -> Result<(), String> {
+    crate::log_info!("Frontend Info: {}", message);
+    Ok(())
+}
+
+#[tauri::command]
+async fn log_frontend_warn(message: String) -> Result<(), String> {
+    crate::log_warn!("Frontend Warn: {}", message);
+    Ok(())
+}
+
+#[tauri::command]
+async fn log_frontend_error(message: String, error_details: Option<String>) -> Result<(), String> {
+    if let Some(details) = error_details {
+        crate::log_error!("Frontend Error: {} - Details: {}", message, details);
+    } else {
+        crate::log_error!("Frontend Error: {}", message);
+    }
+    Ok(())
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
 struct CustomizationSettingsPayload {
     #[serde(rename = "overlaySettings", skip_serializing_if = "Option::is_none")]
@@ -371,7 +393,11 @@ pub fn run() {
             get_customization_settings,
             save_customization_settings,
             get_auto_update_setting,
-            set_auto_update_setting
+            set_auto_update_setting,
+            // Frontend Logging Commands
+            log_frontend_info,
+            log_frontend_warn,
+            log_frontend_error
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
