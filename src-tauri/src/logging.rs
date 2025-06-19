@@ -8,11 +8,12 @@ use std::sync::Mutex;
 use tauri::AppHandle;
 use tauri::Manager;
 
-static FILE_LOGGER: Lazy<Mutex<Option<FileLogger>>> = Lazy::new(|| Mutex::new(None));
+static BACKEND_LOG_FILE_HANDLER: Lazy<Mutex<Option<LogFileHandler>>> = Lazy::new(|| Mutex::new(None));
+static FRONTEND_LOG_FILE_HANDLER: Lazy<Mutex<Option<LogFileHandler>>> = Lazy::new(|| Mutex::new(None));
 
 struct CustomLogger;
 
-struct FileLogger {
+struct LogFileHandler { 
     file: File,
     log_path: PathBuf,
 }
@@ -101,18 +102,30 @@ impl log::Log for CustomLogger {
 
             println!("{}", console_msg);
 
-            if let Ok(mut logger) = FILE_LOGGER.lock() {
-                if let Some(file_logger) = logger.as_mut() {
-                    let file_msg = format!(
-                        "{} [{}] [{}] {}\n",
-                        timestamp,
-                        record.level(),
-                        record.target(),
-                        record.args()
-                    );
+            let file_msg = format!(
+                "{} [{}] [{}] {}\n",
+                timestamp,
+                record.level(),
+                record.target(),
+                record.args()
+            );
 
-                    if let Err(e) = file_logger.file.write_all(file_msg.as_bytes()) {
-                        eprintln!("Failed to write to log file: {}", e);
+            let is_frontend_log = record.target().starts_with("showcase_app_lib::log_frontend_");
+
+            if is_frontend_log {
+                if let Ok(mut logger_guard) = FRONTEND_LOG_FILE_HANDLER.lock() {
+                    if let Some(file_handler) = logger_guard.as_mut() {
+                        if let Err(e) = file_handler.file.write_all(file_msg.as_bytes()) {
+                            eprintln!("Failed to write to frontend log file: {}", e);
+                        }
+                    }
+                }
+            } else {
+                if let Ok(mut logger_guard) = BACKEND_LOG_FILE_HANDLER.lock() {
+                    if let Some(file_handler) = logger_guard.as_mut() {
+                        if let Err(e) = file_handler.file.write_all(file_msg.as_bytes()) {
+                            eprintln!("Failed to write to backend log file: {}", e);
+                        }
                     }
                 }
             }
@@ -120,18 +133,25 @@ impl log::Log for CustomLogger {
     }
 
     fn flush(&self) {
-        if let Ok(mut logger) = FILE_LOGGER.lock() {
-            if let Some(file_logger) = logger.as_mut() {
-                if let Err(e) = file_logger.file.flush() {
-                    eprintln!("Failed to flush log file: {}", e);
+        if let Ok(mut logger_guard) = BACKEND_LOG_FILE_HANDLER.lock() {
+            if let Some(file_handler) = logger_guard.as_mut() {
+                if let Err(e) = file_handler.file.flush() {
+                    eprintln!("Failed to flush backend log file: {}", e); 
+                }
+            }
+        }
+        if let Ok(mut logger_guard) = FRONTEND_LOG_FILE_HANDLER.lock() {
+            if let Some(file_handler) = logger_guard.as_mut() {
+                if let Err(e) = file_handler.file.flush() {
+                    eprintln!("Failed to flush frontend log file: {}", e);
                 }
             }
         }
     }
 }
 
-impl FileLogger {
-    fn new(log_dir: &Path) -> io::Result<Self> {
+impl LogFileHandler {
+    fn new(log_dir: &Path, log_prefix: &str) -> io::Result<Self> {
         fs::create_dir_all(log_dir)?;
 
         let today = Local::now();
@@ -141,7 +161,7 @@ impl FileLogger {
         let mut log_path;
 
         loop {
-            log_path = log_dir.join(format!("{}_{}.log", date_str, count));
+            log_path = log_dir.join(format!("{}_{}_{}.log", log_prefix, date_str, count));
             if !log_path.exists() {
                 break;
             }
@@ -154,7 +174,7 @@ impl FileLogger {
             .append(true)
             .open(&log_path)?;
 
-        Ok(FileLogger { file, log_path })
+        Ok(LogFileHandler { file, log_path }) 
     }
 
     fn log_path(&self) -> &PathBuf {
@@ -170,24 +190,36 @@ pub fn init_logging(app_handle: &AppHandle) -> Result<PathBuf, String> {
 
     let logs_dir = app_data_dir.join("logs");
 
-    let file_logger =
-        FileLogger::new(&logs_dir).map_err(|e| format!("Failed to create log file: {}", e))?;
+    let backend_file_handler =
+        LogFileHandler::new(&logs_dir, "backend")
+            .map_err(|e| format!("Failed to create backend log file: {}", e))?;
+    let backend_log_path = backend_file_handler.log_path().clone();
 
-    let log_path = file_logger.log_path().clone();
-
-    if let Ok(mut logger_guard) = FILE_LOGGER.lock() {
-        *logger_guard = Some(file_logger);
+    if let Ok(mut guard) = BACKEND_LOG_FILE_HANDLER.lock() {
+        *guard = Some(backend_file_handler);
     } else {
-        return Err("Failed to initialize file logger".to_string());
+        return Err("Failed to lock backend file handler for initialization".to_string());
+    }
+
+    let frontend_file_handler =
+        LogFileHandler::new(&logs_dir, "frontend")
+            .map_err(|e| format!("Failed to create frontend log file: {}", e))?;
+    let frontend_log_path = frontend_file_handler.log_path().clone();
+
+    if let Ok(mut guard) = FRONTEND_LOG_FILE_HANDLER.lock() {
+        *guard = Some(frontend_file_handler);
+    } else {
+        return Err("Failed to lock frontend file handler for initialization".to_string());
     }
 
     static LOGGER: CustomLogger = CustomLogger;
     log::set_logger(&LOGGER)
-        .map(|()| log::set_max_level(LevelFilter::Info))
+        .map(|()| log::set_max_level(LevelFilter::Info)) 
         .map_err(|e| format!("Failed to set logger: {}", e))?;
 
-    log_info!("Logging system initialized");
-    log_info!("Log file: {}", log_path.display());
-
-    Ok(log_path)
+    crate::log_info!("Logging system initialized.");
+    crate::log_info!("Backend log file: {}", backend_log_path.display());
+    crate::log_info!("Frontend log file: {}", frontend_log_path.display());
+    
+    Ok(backend_log_path)
 }
