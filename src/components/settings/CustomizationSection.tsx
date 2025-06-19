@@ -655,7 +655,6 @@ export const CustomizationSection: React.FC = () => {
             </div>
          </div>
 
-         {/* Floating Save Overlay - Discord Style with Framer Motion */}
          <AnimatePresence>
             {hasChanges && (
                <motion.div 
