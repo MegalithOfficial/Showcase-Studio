@@ -264,7 +264,7 @@ export const AboutSection: React.FC = () => {
             <h4 className="text-lg font-medium text-slate-200 mb-4">Links</h4>
             <div className="space-y-1">
                <a
-                  href="#"
+                  href="https://github.com/MegalithOfficial/Showcase-Studio"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-between px-3 py-2.5 text-indigo-400 hover:text-indigo-300 rounded-md hover:bg-indigo-900/20 transition-all border border-transparent hover:border-indigo-800/30"
