@@ -40,3 +40,7 @@ tauri-plugin-process = "2"
 semver = "1.0.26"
 tauri-plugin-dialog = "2"
 zip = "0.6"
+ooxmlsdk = "0.2.2"
+
+[patch.crates-io]
+zip = { git = "https://github.com/zip-rs/zip2.git", tag = "v2.6.1" }
