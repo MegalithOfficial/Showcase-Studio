@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Paintbrush, RefreshCw, Bell, BellOff, Loader2, Layers, Image as ImageIcon, 
-  Upload, Sliders, User, Type, Settings, Info, ArrowLeft, X, Check, Save, RotateCcw } from 'lucide-react';
+  Upload, Sliders, User, Type, Info, X, Check, Save, RotateCcw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { InfoToast } from '../layout/Toasts';
 import Logger from '../../utils/log';
 import { open } from '@tauri-apps/plugin-dialog';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { OverlayPosition, OverlayStyle, OverlaySettings, FirstSlideSettings, CustomizationSettingsPayload } from '../../utils/types';
+import type { OverlayPosition, OverlayStyle, CustomizationSettingsPayload } from '../../utils/types';
 
 export const CustomizationSection: React.FC = () => {
    const [autoUpdatesEnabled, setAutoUpdatesEnabled] = useState<boolean>(true);

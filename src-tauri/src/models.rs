@@ -81,6 +81,7 @@ pub struct FirstSlideSettings {
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
+
 pub struct AppConfig {
     pub selected_server_id: Option<String>,
     pub selected_channel_ids: Vec<String>,

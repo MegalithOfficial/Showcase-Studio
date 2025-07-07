@@ -174,11 +174,12 @@ export const IndexingSection: React.FC = () => {
          config.selected_channel_ids = updatedSelectedIds;
 
          await invoke('set_configuration', {
-            serverId: config.selected_server_id,
-            channelIds: config.selected_channel_ids,
-            isSetupComplete: true
+            config: {
+               selected_server_id: config.selected_server_id,
+               selected_channel_ids: updatedSelectedIds,
+               is_setup_complete: true
+            }
          });
-
          setSelectedChannelCount(config.selected_channel_ids.length);
 
       } catch (error) {

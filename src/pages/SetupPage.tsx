@@ -101,7 +101,7 @@ const SetupPage: React.FC = () => {
       if (!serverId) return;
       setIsLoadingChannels(true);
       setChannels([]);
-      
+
       try {
          Logger.info("Fetching Discord Channels for server:", serverId);
          const fetchedChannels = await invoke<DiscordChannel[]>('get_discord_channels', { guildIdStr: serverId });
@@ -142,7 +142,7 @@ const SetupPage: React.FC = () => {
                });
 
                unlistenComplete = await listen<string>('indexing-complete', (event) => {
-                 Logger.info("Indexing complete:", event.payload);
+                  Logger.info("Indexing complete:", event.payload);
                   setIndexingStatus(event.payload);
                   setTimeout(() => {
                      window.location.reload();
@@ -188,12 +188,12 @@ const SetupPage: React.FC = () => {
 
    const handleInitialSave = async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      
+
       if (!discordToken) {
          ErrorToast('Discord Bot Token is required.');
          return;
       }
-      
+
       setIsSaving(true);
 
       try {
@@ -231,8 +231,10 @@ const SetupPage: React.FC = () => {
       const channelToAdd = channels.find(c => c.id === channelId);
       const alreadySelected = selectedChannels.some(sc => sc.id === channelId);
 
+      console.log(channelId, channelToAdd, alreadySelected, channelToAdd.name);
+
       if (channelToAdd && !alreadySelected) {
-         Logger.info('handleAddChannel: Adding channel to state:', channelToAdd.name);
+         Logger.info(`handleAddChannel: Adding channel to state aa: ${channelToAdd.name}`);
          setSelectedChannels(prev => [...prev, channelToAdd].sort((a, b) => a.position - b.position));
       } else {
          Logger.warn('handleAddChannel: Channel not found or already added.');
@@ -254,19 +256,19 @@ const SetupPage: React.FC = () => {
 
    const handleFinish = async () => {
       setIsFinishing(true);
-      
+
       if (!selectedServer) {
          ErrorToast("Please select a server.");
          setIsFinishing(false);
          return;
       }
-      
+
       if (selectedChannels.length === 0) {
          ErrorToast("Please select at least one channel.");
          setIsFinishing(false);
          return;
       }
-      
+
       try {
          const serverIdToSave = selectedServer.id;
          const channelIdsToSave = selectedChannels.map(c => c.id);
@@ -274,12 +276,14 @@ const SetupPage: React.FC = () => {
          Logger.info("Saving configuration before finishing:", { serverId: serverIdToSave, channelIds: channelIdsToSave });
 
          await invoke('set_configuration', {
-            serverId: serverIdToSave,
-            channelIds: channelIdsToSave,
-            isSetupComplete: true
+            config: {
+               selected_server_id: serverIdToSave,
+               selected_channel_ids: channelIdsToSave,
+               is_setup_complete: true
+            }
          });
          Logger.success("Configuration saved successfully.");
-         
+
          setCurrentStep(3);
       } catch (err) {
          Logger.error("Failed to save configuration:", err);
@@ -362,7 +366,7 @@ const SetupPage: React.FC = () => {
                      <h2 className="text-2xl font-semibold text-gray-200 mb-6 text-center lg:text-left">
                         App Configuration
                      </h2>
-                     
+
                      <form onSubmit={handleInitialSave} className="space-y-6">
                         {/* Discord Token Input */}
                         <div>
@@ -462,12 +466,12 @@ const SetupPage: React.FC = () => {
                         {/* Channel Select  */}
                         <div>
                            <label htmlFor="channelSelect" className="block text-sm font-medium text-gray-300 mb-1.5">
-                              Add Channels to Index 
+                              Add Channels to Index
                            </label>
                            <HeadlessFloatingSelect
                               options={channelOptions}
                               value={null}
-                              onChange={handleAddChannel} 
+                              onChange={handleAddChannel}
                               placeholder={
                                  !selectedServer ? "-- Select Server First --"
                                     : isLoadingChannels ? "Loading channels..."
@@ -476,7 +480,7 @@ const SetupPage: React.FC = () => {
                               }
                               disabled={!selectedServer || isLoadingChannels}
                               loading={isLoadingChannels}
-                              listClassName="max-h-48" 
+                              listClassName="max-h-48"
                            />
                         </div>
 
@@ -485,7 +489,7 @@ const SetupPage: React.FC = () => {
                            <div className="mt-4 pt-4 border-t border-gray-700/50">
                               <p className="text-sm font-medium text-gray-300 mb-2">Channels to Index:</p>
                               <div className="flex flex-wrap gap-2">
-                                 <AnimatePresence> 
+                                 <AnimatePresence>
                                     {selectedChannels.map(channel => (
                                        <motion.div
                                           key={channel.id}
@@ -585,7 +589,7 @@ const SetupPage: React.FC = () => {
          {/* Left Column (Info) */}
          <motion.div
             className="relative w-full lg:w-1/2 flex flex-col justify-center items-center lg:items-start text-center lg:text-left p-8 lg:pr-12 mb-10 lg:mb-0 z-10"
-            variants={leftVariants} 
+            variants={leftVariants}
             initial="hidden"
             animate="visible"
          >
